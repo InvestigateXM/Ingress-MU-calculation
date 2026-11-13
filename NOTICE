@@ -8,4 +8,6 @@ Licensed under the Apache License, Version 2.0.
 https://github.com/google/s2-geometry-library-java
 
 Modifications: Python implementation using s2geometry primitives, fixed historical
-covering settings and Java priority queue tie ordering.
+covering settings and Java priority queue tie ordering. The region covering and
+cell-union normalization are in mu_calculator/covering.py; the S2 cell-centre
+computation in mu_calculator/geometry.py follows the S2 projection definitions.

@@ -1,6 +1,9 @@
 """2011 S2 region covering with Java priority queue tie ordering.
 
-Adapted from Google's Apache-2.0 s2-geometry-library-java algorithm.
+Derived from S2RegionCoverer and S2CellUnion in google/s2-geometry-library-java
+(Apache-2.0, Copyright 2005 Google Inc.). Modified: ported to Python on top of
+the s2geometry bindings, with fixed parameters and Java PriorityQueue ordering.
+See NOTICE.
 """
 
 import math
