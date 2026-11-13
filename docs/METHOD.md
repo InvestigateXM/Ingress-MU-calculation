@@ -41,15 +41,14 @@ density(C)   = mean of the population-count raster value at the centre of
 area(T, C)   = spherical area of (T intersected with C), in km^2,
                Earth radius 6371.01 km                              (section 6)
 
-region_sum(R) = sum of contributions assigned to level-6 region R:
-                if level(C) >= 6 and ancestor(C, 6) = R:
-                    area(T, C) * density(C)
-                if level(C) < 6 and R is a descendant of C
-                and area(T, R) > 1e-12 km^2:
-                    area(T, R) * density(C)
+region_sum(R) = sum of area(T, C) * density(C) over all covering cells C
+                with ancestor(C, 6) = R
+                (every covering cell has level >= 6, section 4)
 
 MU(T) = max(1, floor( sum over regions R of max(1, region_sum(R)) + 0.5 ))
 ```
+
+A region `R` is a level-6 S2 cell that contains at least one covering cell. A covering cell is never coarser than level 6, so each covering cell belongs to exactly one region: itself (level 6) or its level-6 ancestor (finer cells).
 
 The raster value is used directly as "MU per km^2". It is a population count per raster pixel and is not divided by the pixel area.
 
@@ -71,9 +70,9 @@ The order is part of the definition. Changing it changes results.
 |---|---|
 | Coordinate precision | integer E6 degrees |
 | Earth radius | 6371.01 km (sphere) |
-| Covering: maximum cells | 20 |
+| Covering: maximum cells | 20 (a work budget that the minimum level overrides) |
 | Covering: maximum level | 13 |
-| Covering: minimum level | 0 |
+| Covering: minimum level | 6 |
 | Covering: level modulus | 1 |
 | Density sampling level | 15 |
 | Region level | 6 |
@@ -336,7 +335,7 @@ Level `L` divides the sphere into `6 * 4^L` cells. The average area is the spher
 
 | Level | Cells | Average area (R = 6371.01 km) | Typical edge | Role here |
 |---|---|---|---|---|
-| 6 | 24,576 | about 20,755 km^2 | about 140 km | region (regional minimum) |
+| 6 | 24,576 | about 20,755 km^2 | about 140 km | region (regional minimum); coarsest level of a covering cell |
 | 9 | 1,572,864 | about 324 km^2 | about 18 km | start level in the worked example (section 8) |
 | 12 | 100,663,296 | about 5.07 km^2 | about 2.3 km | |
 | 13 | 402,653,184 | about 1.267 km^2 | about 1.1 km | finest level of the covering |
@@ -376,10 +375,20 @@ The covering heuristic follows class `S2RegionCoverer` at [Java S2 commit c28f28
 The region is the triangle as an S2 loop: the three unit vectors in order, normalised so that the loop encloses the smaller of the two regions it bounds (the loop is inverted if its area exceeds 2*pi). Each edge is the great-circle arc between its vertices. The result does not depend on the order or direction in which the vertices are given.
 
 ```
-max_cells = 20     max_level = 13     min_level = 0     level_mod = 1
+max_cells = 20     max_level = 13     min_level = 6     level_mod = 1
 ```
 
-With `level_mod = 1` every cell has up to `4` children (`max_children_shift = 2`). With `min_level = 0` the minimum-level rules in the original code never apply and are left out below.
+With `level_mod = 1` every cell has up to `4` children (`max_children_shift = 2`); the level-modulus rules of the original code (several levels per expansion step, rounding the start level to the modulus) never apply and are left out below.
+
+`min_level = 6` is the level of the regions (section 7). It takes priority over `max_cells`: a cell coarser than level 6 is never part of the result, even if that makes the covering larger than 20 cells. `max_cells` limits only the refinement of cells that are already at level 6 or finer. The rules in which `min_level` appears are collected here and repeated at the steps they belong to:
+
+1. **Start level.** The start level (below) is not raised to `min_level`. If it is between 1 and 5, the initial candidates are coarser than level 6; if it is 0, the six face cells are the initial candidates.
+2. **Terminal flag.** A candidate is terminal only if its level is at least `min_level` (and it is at the maximum level or lies completely inside the triangle). A cell coarser than level 6 is never terminal, even when it lies completely inside the triangle.
+3. **All-terminal shortcut.** The rule that sends a candidate itself to the result when all four of its children are terminal applies only to candidates of level 6 or finer.
+4. **Main loop.** A candidate coarser than level 6 is always expanded, whatever the number of cells already in the result and the queue. The budget test applies only to candidates of level 6 or finer.
+5. **Result.** Consequently no cell of the result is coarser than level 6. The final normalisation does not merge four siblings into a parent coarser than level 6.
+
+Because of rules 2 and 4 the result of a large field is dominated by level-6 cells, and its size is not bounded by `max_cells` (the covering of the field in section 8 has 195 cells). A covering under which no cell coarser than level 6 would arise is not affected by the rules: small and medium fields give the same covering as without a minimum level.
 
 ### Region predicates
 
@@ -428,6 +437,8 @@ level = clamp(level, 0, 30)                 (level = 30 if 2*a <= 0)
 level = min(level, max_level, 29)           = min(level, 13)
 ```
 
+The result is not raised to `min_level`; the minimum level has no influence on this step. With `x = K / (2a)`: `level = 0` for `x < 2` (cap radius `a` above about 0.2357 rad, 1,500 km); `level = 1` to `5` for `2 <= x < 64` (`a` above `K/128`, about 0.00737 rad or 47 km); and `level >= 6` for smaller caps.
+
 `level` is the finest level at which every cell is guaranteed to be at least as wide as the cap's diameter, so the cap contains at most one cell vertex. In the original Java code this is `S2Projections.MIN_WIDTH.getMaxLevel(2 * cap.angle().radians())`, with the derivative `sqrt(2)/3` of the width metric and `getMaxLevel(value) = floor(log2(2 * deriv / value))`. Rounding up instead of down starts one level too fine for some triangles and changes the result.
 
 ### Initial candidates
@@ -444,6 +455,8 @@ else:
 
 For all fields small enough to have `level > 0`, the start is the (usually four) level-`level` cells around the cell vertex nearest the cap centre. The six-face start applies only when the cap is so large that `level` is 0.
 
+The start level is compared with 0, not with `min_level`. For `level` from 1 to 5 the initial candidates are cells coarser than level 6; they are not terminal (see below), so they are expanded level by level until level 6 is reached. For `level = 0` the six face cells are candidates, and `new_candidate` drops those that do not intersect the triangle. A field that lies on one cube face leaves a single face candidate.
+
 ### Candidates
 
 A candidate holds a cell, a terminal flag, and the list of children that intersect the triangle.
@@ -451,17 +464,19 @@ A candidate holds a cell, a terminal flag, and the list of children that interse
 ```
 new_candidate(cell):
     if not may_intersect(cell): return null
-    terminal = (cell.level + 1 > max_level) or contains(cell)
+    terminal = false
+    if cell.level >= min_level:
+        terminal = (cell.level + 1 > max_level) or contains(cell)
     return {cell, terminal, children = []}
 ```
 
-With `max_level = 13`, cells of level 13 are terminal, and so is any cell completely inside the triangle.
+With `max_level = 13` and `min_level = 6`, cells of level 13 are terminal, and so is any cell of level 6 to 13 that lies completely inside the triangle. A cell of level 0 to 5 is never terminal, not even when it lies completely inside the triangle (`contains` is not evaluated for it): it is always subdivided, because a cell coarser than level 6 cannot be part of the result.
 
 ```
 add_candidate(c):
     if c is null: return
     if c.terminal: result.append(c.cell); return
-    # expand one level
+    # expand exactly one level (the same for cells coarser than min_level)
     num_terminals = 0
     for child in c.cell.children (ascending id order):
         cc = new_candidate(child)
@@ -469,13 +484,15 @@ add_candidate(c):
             c.children.append(cc)
             if cc.terminal: num_terminals += 1
     if c.children is empty: return                       # nothing intersects: drop it
-    if num_terminals == 4:                               # all four children terminal
+    if num_terminals == 4 and c.cell.level >= min_level: # all four children terminal
         c.terminal = true
         add_candidate(c)                                 # -> the parent goes to the result
     else:
         priority = -( (( (c.cell.level << 2) + len(c.children) ) << 2) + num_terminals )
         queue.add(entry(priority, c))
 ```
+
+Candidates coarser than `min_level` take the same path as all others, with two consequences. Their children are created by `new_candidate`, so a child is terminal only if it is at level 6 or finer (the children of a level-5 candidate are the first that can be terminal, when they lie completely inside the triangle) and the children counts, terminal counts and priority are computed exactly as before. The all-terminal shortcut is skipped for them (`c.cell.level >= min_level` is false), because it would put a cell coarser than level 6 into the result; such a candidate always goes to the queue. For a candidate of level 6 or finer nothing changes.
 
 ### Priority
 
@@ -490,7 +507,9 @@ where `level` is the candidate cell's level, `n_children` the number of its chil
 ```
 while queue not empty:
     c = queue.poll()                                     # highest priority
-    if len(c.children) == 1  or  len(result) + queue.size() + len(c.children) <= max_cells:
+    if c.cell.level < min_level
+       or len(c.children) == 1
+       or len(result) + queue.size() + len(c.children) <= max_cells:
         for child in c.children (in stored order):
             add_candidate(child)
     else:
@@ -498,7 +517,12 @@ while queue not empty:
         add_candidate(c)                                 # keep the coarse cell: result.append
 ```
 
-`queue.size()` is evaluated after `c` has been removed. A candidate with a single intersecting child is always expanded. Otherwise it is expanded only if the cells that would then exist (already in the result, still waiting in the queue, and the children of `c`) fit within 20. If not, `c` itself is kept as a final, coarse cell.
+`queue.size()` is evaluated after `c` has been removed. A candidate coarser than level 6 is always expanded; the budget is not consulted for it, so it can never be kept as a result cell. A candidate of level 6 or finer with a single intersecting child is always expanded. Otherwise it is expanded only if the cells that would then exist (already in the result, still waiting in the queue, and the children of `c`) fit within 20. If not, `c` itself is kept as a final, coarse cell.
+
+Two properties follow for fields whose forced expansion fills the budget:
+
+* The forced expansion of the coarse candidates puts cells into the result (terminal children) and into the queue (the other children). Once `len(result) + queue.size() + 2` exceeds 20, the budget test fails for every remaining candidate of level 6 or finer that has two or more children, and each of them is kept as it is, at its own level. Candidates with exactly one intersecting child are still expanded, one level per step, until a candidate with two or more children, or a terminal cell, is reached; this is how some boundary cells of a large field end up at levels 7 to 10.
+* Nothing removes a cell once it is in the result, and `max_cells` limits only the optional refinement. The result therefore contains at least one cell inside every level-6 cell that the triangle intersects, can hold far more than 20 cells, and spans at most 24,576 regions (the number of level-6 cells on the sphere).
 
 ### The priority queue and ties
 
@@ -547,7 +571,7 @@ A FIFO queue, a LIFO queue, a stable sort, or ordering by cell id gives differen
 
 ### Final normalisation
 
-The cells in `result` are put through a cell-union normalisation, the same operation as the `S2CellUnion` constructor performs (with `min_level = 0` and `level_mod = 1` there is no further expansion step):
+The cells in `result` are put through a cell-union normalisation, the same operation as the `S2CellUnion` constructor performs, with one restriction: four siblings are merged into their parent only if the parent is at level `min_level` or finer (with `level_mod = 1` there is no further expansion step):
 
 ```
 sort the ids ascending (remove duplicates)
@@ -555,7 +579,7 @@ output = []
 for id in ids:
     if output not empty and contains(output.last, id): continue         # already covered
     while output not empty and contains(id, output.last): pop output    # id covers earlier cells
-    while len(output) >= 3 and id is not a face cell:
+    while len(output) >= 3 and level(id) > min_level:                   # parent level >= min_level
         # the last three outputs plus id are the four children of one parent?
         p = parent(id)
         if all(level(o) == level(id) and parent(o) == p for o in last three of output):
@@ -564,7 +588,9 @@ for id in ids:
     output.append(id)
 ```
 
-The result is the covering `C(T)`: a sorted list of disjoint cells, usually of mixed levels and usually fewer than 20 cells.
+The restriction keeps the result free of cells coarser than level 6: four level-6 siblings are never merged into a level-5 cell. (Merging without the restriction and then replacing every cell coarser than level 6 by its level-6 descendants gives the same list.) Face cells are excluded by the same test.
+
+The result is the covering `C(T)`: a sorted list of disjoint cells of levels 6 to 13. Small and medium fields have mixed levels and usually fewer than 20 cells; large fields have many more, mostly level-6 cells.
 
 ### Why current S2 versions can give a different covering
 
@@ -574,9 +600,9 @@ The covering is not a mathematical property of the triangle; it is the output of
 
 ## 5. Cell density
 
-For a covering cell `C` of level `L` (`L <= 13` in practice):
+For a covering cell `C` of level `L` (`6 <= L <= 13`, section 4):
 
-1. Enumerate **all** `4^(15 - L)` level-15 cells inside `C`: 16 for a level-13 cell, 64 for level 12, 256 for level 11, and so on.
+1. Enumerate **all** `4^(15 - L)` level-15 cells inside `C`: 16 for a level-13 cell, 64 for level 12, 256 for level 11, and so on, up to `4^9 = 262,144` for a level-6 cell.
 2. For each of them compute the centre (section 3) as `(lat, lng)` in degrees.
 3. Look up the raster value at the centre (section 2: shifted pixel, sum over rasters, `0` where nothing is valid).
 4. `density(C)` is the plain arithmetic mean of those values.
@@ -597,6 +623,12 @@ for a in 0..n-1:                          # outer loop
 Accumulate the sampled values as float64 and divide by `n*n`; the shipped implementation uses NumPy's float64 `mean` (NumPy 2.5.4). Implementations with a different reduction order may differ in the last floating-point bits.
 
 The samples are not weighted, are not restricted to the part of the cell inside the triangle, and are not taken only at the cell's own centre. The whole cell is sampled, whatever small fraction of it the triangle covers.
+
+### Implementation note: precomputing level-6 densities
+
+A large field has hundreds or thousands of level-6 covering cells (section 8), and each needs `262,144` samples. The sphere has 24,576 level-6 cells, so a table of all level-6 densities is small (24,576 float64 values, 192 KiB), but it covers `24,576 * 262,144 = 6,442,450,944` samples, every level-15 cell of the sphere, and is worth building once instead of sampling at request time. The same applies to the finer levels of the covering, whose tables grow by a factor of 4 per level (level 13: 402,653,184 cells).
+
+A precomputed table gives bit-identical results only if every entry is computed as above: the same level-15 centres in the same order (outer loop `a`, inner loop `b`), the same raster lookup and the same reduction (the float64 mean of the contiguous sample vector of that cell). Deriving a cell's mean from the sums or means of its children, or from partial sums over larger tiles, is mathematically equal but changes the order of the floating-point additions and can differ in the last bits of the density. Each table entry must therefore be reduced directly from its own samples.
 
 ---
 
@@ -653,16 +685,13 @@ An earth radius of 6371.01 km is used; the mean radius 6371.0088 km, planar area
 
 ### Grouping
 
-Every covering cell contributes `area_km2 * density(C)` to a **region**, the level-6 S2 cell that contains it:
-
-* A covering cell of level 6 or finer lies completely inside one level-6 cell, its level-6 ancestor, which is the region. The region exists because the covering cell exists, even if the computed overlap area is zero or extremely small; no overlap threshold is applied on this branch.
-* A covering cell **coarser than level 6** (possible only for fields of roughly a few hundred kilometres or more) is split: for each of its level-6 descendants compute the overlap area with the triangle (section 6) and keep it if it exceeds `1e-12` km^2; each such descendant receives `overlap * density(C)`, where `density(C)` is the density of the original, coarse covering cell. A descendant that the triangle does not reach creates no region.
+Every covering cell contributes `area_km2 * density(C)` to exactly one **region**, the level-6 S2 cell that contains it. Because no covering cell is coarser than level 6 (section 4), a covering cell lies completely inside one level-6 cell: for a level-6 cell that is the cell itself, for a finer cell it is its level-6 ancestor. Cells are never split among several regions, and no overlap threshold applies. The region exists because the covering cell exists, even if the computed overlap area is zero or extremely small.
 
 ```
-region_sum[R] += area(T, C) * density(C)                  for cells of level >= 6, R = ancestor(C, 6)
-region_sum[R] += area(T, D) * density(C)                  for cells of level < 6, D a level-6
-                                                          descendant of C with area(T, D) > 1e-12
+region_sum[R] += area(T, C) * density(C)        for every covering cell C, R = ancestor(C, 6)
 ```
+
+where `ancestor(C, 6) = C` for a cell of level 6. A region can receive several covering cells (the first example of section 8 has a region with nine); in the second example of section 8 every region receives exactly one.
 
 ### Minimum
 
@@ -670,7 +699,7 @@ region_sum[R] += area(T, D) * density(C)                  for cells of level < 6
 region_value[R] = max(1, region_sum[R])
 ```
 
-The minimum of 1 applies to each level-6 region that has an entry, not to each covering cell. A region that the field touches but with zero population still contributes `1`. A field that creates entries in two regions therefore awards at least 2; merely touching a descendant of a coarse covering cell does not create an entry unless the overlap exceeds the threshold.
+The minimum of 1 applies to each level-6 region that has an entry, not to each covering cell. A region that the field touches but with zero population still contributes `1`. A field whose covering cells lie in two regions therefore awards at least 2.
 
 ### Sum and rounding
 
@@ -713,7 +742,7 @@ x     = K / (2a) = 0.9428090 / 0.00155659 = 605.69
 level = floor(log2(605.69)) = floor(9.2424) = 9
 ```
 
-The leaf cell at the cap axis is `47afffc2bd4433cb`. Its level-9 vertex neighbours, in order: `47affc`, `47a554`, `47b004`, `47baac`. These four are the initial candidates, all with priority `-148` (level 9, one intersecting child, no terminal child).
+The leaf cell at the cap axis is `47afffc2bd4433cb`. Its level-9 vertex neighbours, in order: `47affc`, `47a554`, `47b004`, `47baac`. These four are the initial candidates, all with priority `-148` (level 9, one intersecting child, no terminal child). The start level 9 is finer than `min_level = 6`, and every cell polled in the trace has level 9 to 12, so none of the minimum-level rules of this section takes effect: the trace and the covering are the same with and without the minimum level.
 
 Queue trace (priority = `-(((level*4 + children)*4) + terminal children)`; "result before" is the result size before the cell is polled; "queue after" the queue size after the poll):
 
@@ -842,7 +871,35 @@ The same triangle and raster mosaic, with densities recomputed for each covering
 | Same start, descending cell-id ties | `47a5555` | 3046 |
 | Start from the six faces instead of the cap | `47b001d` | 3033 |
 
-The last four ties at priority -207 (steps 19 to 22) decide which of four candidates is kept as a coarse cell; each choice puts a different set of cells into the covering and gives a different MU.
+The last four ties at priority -207 (steps 19 to 22) decide which of four candidates is kept as a coarse cell; each choice puts a different set of cells into the covering and gives a different MU. The minimum level does not change any row: all cells polled in these variants have level 9 or finer.
+
+### Second example: a large field
+
+Triangle:
+
+```
+A   -9.011934, 13.410663   (-9011934, 13410663)
+B   22.905822, 33.272151   (22905822, 33272151)
+C   -0.596665, 35.028782   (-596665, 35028782)
+```
+
+The result is **76,732,083 MU** (unrounded total 76,732,083.15944749). The numbers were produced by running the reference implementation with `min_level = 6`, computing every density directly from its own level-15 samples. Only totals are listed; a per-cell table would have 195 rows.
+
+| Quantity | Value |
+|---|---|
+| Spherical area of the triangle (R = 6371.01 km) | 3,335,091.41545603 km^2 (crosses the equator, entirely on cube face 0) |
+| Bounding cap | height `h = 0.05593545`, angular radius `a = 0.33605009` rad (about 2,141 km) |
+| `x = K / (2a)` and start level | `x = 1.40278`, `level = floor(log2(x)) = 0`: the six face cells are the initial candidates, only face 0 survives `new_candidate` |
+| Queue polls | 198, of which 96 are candidates of level 0 to 5 (1, 2, 5, 8, 21, 59 at levels 0 to 5); all of them are expanded |
+| Covering cells | 195: 183 at level 6, 7 at level 7, 2 at level 8, 2 at level 9, 1 at level 10 |
+| Level-6 regions | 195, each with exactly one covering cell; the 12 cells of levels 7 to 10 come from level-6 candidates with a single intersecting child, which are always expanded |
+| Level-15 samples | 48,473,088 in total; 262,144 for each level-6 cell, 4^9 |
+| Cell densities | from 0.0166 to 1,260.72 |
+| Sum of the overlap areas | 3,335,091.415456031 km^2, equal to the triangle area |
+| Sum of `max(1, region_sum)` | 76,732,083.15944749 (no region is below 1, so the minimum adds nothing) |
+| `floor(total + 0.5)` | 76,732,083 |
+
+For comparison, the covering with `min_level = 0` has 20 cells (1 at level 3, 10 at level 4, 6 at level 5, 2 at level 6, 1 at level 7) and gives 73,584,003.10539615, i.e. 73,584,003 MU (see section 9).
 
 ---
 
@@ -854,6 +911,11 @@ Each item lists what goes wrong when the step is done differently.
 * **Rounding the start level up.** `floor(log2(K / (2a)))` must round down. Rounding up starts one level too fine for some triangles and yields a different covering.
 * **Breaking priority ties by insertion order, cell id or randomly.** Ties are common (several level-12 or level-13 candidates with equal child counts). The binary-heap behaviour, including its stopping conditions and the replacement of the root by the last array element, has to be reproduced exactly.
 * **Starting from the six faces when `level > 0`.** The face start is the fallback only for very large caps.
+* **Using `min_level = 0`.** The covering of a large field then keeps cells coarser than level 6 and stays near 20 cells. For the field of the second example in section 8 (3.3 million km^2) this gives 20 cells of levels 3 to 7 and 73,584,003 MU (with each coarse cell's overlap distributed over its level-6 descendants), instead of 195 cells and 76,732,083 MU: 3,148,080 MU (4.1 %) too little. Fields whose covering has no cell coarser than level 6, which includes small and medium fields, are not affected.
+* **Treating `max_cells = 20` as a hard limit for large fields.** The minimum level overrides it: candidates coarser than level 6 are always expanded, and cells of level 6 or finer are kept whole once the budget is used up. Stopping at 20 cells, or subdividing a finished 20-cell covering down to level 6, gives a different set of cells and different densities.
+* **Raising the start level to `min_level`.** The start level is not clamped. A field with start level 0 starts from the six faces, one with start level 1 to 5 from the four cells of that level; starting from four level-6 cells around the cap axis covers only part of a large field.
+* **Letting a coarse candidate become terminal.** A cell coarser than level 6 is not terminal even if it lies completely inside the triangle, and the all-four-children-terminal shortcut does not apply to it. Otherwise cells coarser than level 6 enter the result.
+* **Merging level-6 siblings into a level-5 parent in the final normalisation.** A merge is allowed only if the parent is at level 6 or finer.
 * **Using a different bounding cap.** The cap is derived from the loop's latitude/longitude bounding rectangle (centre or pole axis, whichever gives the smaller cap). The minimum enclosing circle of the three vertices, the centroid or the circumcircle gives a different axis and angle, hence a different start cell and level.
 * **Leaving out the final normalisation.** Without merging four sibling cells into their parent (and dropping contained cells), the cell list, and the cell densities used, can differ from the specified result.
 * **Mixing up rasters.** Using the unadjusted counts (`up00g`), a density product, another year or another dataset yields different values nearly everywhere.
@@ -881,9 +943,9 @@ Each item lists what goes wrong when the step is done differently.
 * **Whole-cell density.** The density is a property of the covering cell, not of the triangle. A triangle that overlaps a small part of a cell takes that cell's full density, including populated areas outside the triangle.
 * **Dependence on the exact covering.** Because the covering is a budget-limited heuristic with ties, the results are sensitive to the exact algorithm (section 8). The heuristic follows the 2011 Java library with the geometry primitives and versions specified in section 4.
 * **Numerically borderline cases.** Level selection uses `floor(log2(.))` of a floating-point value, region predicates compare cell edges with triangle edges, and the heap ties depend on exact equality of integer priorities. Triangles that fall within floating-point noise of such a boundary may be computed differently by implementations that differ in rounding, for example in the way the bounding rectangle or the cap is computed. Final rounding of an exact half-integer total is a matter of convention (half up is used).
-* **Coarse covering cells.** Cells coarser than level 6 use the split and `1e-12` km^2 threshold specified in section 7; the child region retains the original covering cell's density.
+* **Covering size and cost for large fields.** The minimum level 6 overrides `max_cells` (section 4), so the covering of a large field has hundreds or thousands of cells, up to the 24,576 level-6 cells of the sphere, and each level-6 cell needs 262,144 density samples (section 5). Precompute the level-6 densities if many large fields are evaluated.
 * **Poles and the antimeridian.** The description is the generic S2 procedure (bounding rectangle with pole handling, cube-face coordinates, face-wrap in the vertex-neighbour step). Special behaviour for triangles that contain a pole, cross the 180-degree meridian, or lie close to cube-face edges is not examined here beyond that.
-* **Large fields.** The procedure is defined for any triangle smaller than a hemisphere, but results for continent-sized fields are extrapolations of the model.
+* **Large fields.** The procedure is defined for any triangle smaller than a hemisphere. The second example of section 8 (3.3 million km^2, entirely within cube face 0) is computed with the rules of sections 4 to 7. Fields that cross cube-face edges or contain a pole at that size are covered only by the generic procedure of the previous item.
 * **Degenerate input.** Triangles with two identical or collinear vertices, or antipodal vertices, are not addressed.
 
 ---
