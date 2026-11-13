@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ingress MU calculator</title>
+<meta name="description" content="Calculate Ingress Mind Units (MU) for a control field from three portal coordinates.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <span class="site">Ingress MU calculator</span>
+  <a href="./" aria-current="page">Calculator</a>
+  <a href="method.html">Method</a>
+  <a href="https://github.com/InvestigateXM/Ingress-MU-calculation">GitHub</a>
+</header>
+<main>
+<h1>Mind Units for a control field</h1>
+<p>Enter the three portal coordinates as <code>latitude, longitude</code> in decimal degrees. Three coordinates, one per line, can be pasted into the first field.</p>
+<form id="form" novalidate>
+  <label for="p1">Portal 1</label>
+  <input type="text" id="p1" placeholder="52.324297, 10.182664" autocomplete="off" spellcheck="false">
+  <label for="p2">Portal 2</label>
+  <input type="text" id="p2" placeholder="52.244048, 10.167482" autocomplete="off" spellcheck="false">
+  <label for="p3">Portal 3</label>
+  <input type="text" id="p3" placeholder="52.295984, 10.231064" autocomplete="off" spellcheck="false">
+  <div class="actions">
+    <button type="submit" id="go">Calculate</button>
+    <a href="#" id="example">Load example</a>
+  </div>
+</form>
+<div id="error" role="alert" hidden></div>
+<section id="result" aria-live="polite" hidden>
+  <div class="mu"><span id="mu"></span> <small>MU</small></div>
+  <p>Area: <span id="area"></span> km²</p>
+  <details>
+    <summary>Details</summary>
+    <p class="hint">Raw MU before regional minimums: <span id="raw"></span>. Total after minimums, before rounding: <span id="total"></span>. See <a href="method.html">Method</a> for how these are derived.</p>
+    <h2>Regions (S2 level 6)</h2>
+    <table id="regions"></table>
+    <h2>Cells</h2>
+    <table id="cells"></table>
+  </details>
+</section>
+</main>
+<footer>
+  Independent reconstruction; not affiliated with or endorsed by Niantic. Population data: Global Rural-Urban Mapping Project, Version 1 (GRUMP v1), CIESIN / NASA SEDAC. Source and API description: <a href="https://github.com/InvestigateXM/Ingress-MU-calculation">GitHub</a>.
+</footer>
+<script>
+const API_BASE = 'https://api.investigatexm.com';
+const TIMEOUT_MS = 30000;
+const EXAMPLE = ['52.324297, 10.182664', '52.244048, 10.167482', '52.295984, 10.231064'];
+
+const $ = id => document.getElementById(id);
+const fields = [$('p1'), $('p2'), $('p3')];
+const params = new URLSearchParams(location.search);
+const api = (params.get('api') || API_BASE).replace(/\/+$/, '');
+
+function showError(msg) {
+  $('error').textContent = msg;
+  $('error').hidden = false;
+  $('result').hidden = true;
+}
+
+// Pasting several lines (or ';'-separated values) into the first field fills all three.
+$('p1').addEventListener('paste', e => {
+  const parts = (e.clipboardData.getData('text') || '').split(/[\n;]+/).map(s => s.trim()).filter(Boolean);
+  if (parts.length < 2) return;
+  e.preventDefault();
+  fields.forEach((f, i) => { if (parts[i] !== undefined) f.value = parts[i]; });
+});
+
+$('example').addEventListener('click', e => {
+  e.preventDefault();
+  fields.forEach((f, i) => { f.value = EXAMPLE[i]; });
+});
+
+function fill(el, head, rows, numeric) {
+  el.replaceChildren();
+  const add = (tag, cells, section) => {
+    const tr = section.insertRow();
+    cells.forEach((c, i) => {
+      const cell = document.createElement(tag);
+      cell.textContent = c;
+      if (numeric[i]) cell.className = 'num';
+      tr.appendChild(cell);
+    });
+  };
+  add('th', head, el.createTHead());
+  const body = el.createTBody();
+  rows.forEach(r => add('td', r, body));
+}
+
+const n = (v, d) => Number(v).toLocaleString('en-US', { maximumFractionDigits: d, minimumFractionDigits: d });
+
+function render(r) {
+  $('error').hidden = true;
+  $('mu').textContent = n(r.mu, 0);
+  $('area').textContent = n(r.area_km2, 4);
+  $('raw').textContent = n(r.raw_mu, 3);
+  $('total').textContent = n(r.regional_total_mu, 3);
+  fill($('regions'), ['Region token', 'Raw MU', 'MU after minimum'],
+    r.regions.map(x => [x.s2_token, n(x.raw_mu, 3), n(x.minimum_applied_mu, 3)]), [false, true, true]);
+  fill($('cells'), ['Cell token', 'Level', 'Overlap km²', 'Density', 'MU'],
+    r.cells.map(x => [x.s2_token, x.level, n(x.overlap_km2, 6), n(x.density, 3), n(x.raw_mu, 3)]),
+    [false, true, true, true, true]);
+  $('result').hidden = false;
+}
+
+async function calculate() {
+  const url = new URL(api + '/getMU');
+  fields.forEach(f => url.searchParams.append('c', f.value.trim()));
+  url.searchParams.set('detail', '1');
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);
+  $('go').disabled = true;
+  try {
+    // Plain GET without custom headers: no CORS preflight.
+    const res = await fetch(url, { signal: ctl.signal });
+    let body = null;
+    try { body = await res.json(); } catch (_) { /* non-JSON error page */ }
+    if (res.status === 429) {
+      const wait = res.headers.get('Retry-After');
+      return showError('Too many requests. Try again' + (wait ? ' in ' + wait + ' seconds.' : ' later.'));
+    }
+    if (res.status === 504) return showError('The calculation timed out on the server. Try again later.');
+    if (!res.ok) return showError((body && body.error) || 'The API returned an error (HTTP ' + res.status + ').');
+    render(body);
+    const q = new URLSearchParams();
+    fields.forEach(f => q.append('c', f.value.trim()));
+    if (params.has('api')) q.set('api', params.get('api'));
+    history.replaceState(null, '', '?' + q.toString().replace(/%2C/gi, ',').replace(/\+/g, '%20'));
+  } catch (err) {
+    showError(err.name === 'AbortError'
+      ? 'The request timed out. Try again later.'
+      : 'Could not reach the API. It may be unavailable, or requests from this connection may be rate limited.');
+  } finally {
+    clearTimeout(timer);
+    $('go').disabled = false;
+  }
+}
+
+$('form').addEventListener('submit', e => { e.preventDefault(); calculate(); });
+
+const linked = params.getAll('c');
+if (linked.length) {
+  fields.forEach((f, i) => { f.value = linked[i] || ''; });
+  calculate();
+}
+</script>
+</body>
+</html>

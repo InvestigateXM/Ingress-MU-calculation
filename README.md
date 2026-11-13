@@ -114,6 +114,10 @@ Errors: `{"error":"message","model":"grump2000-s2java2011-l6min1"}`.
 Limits are configurable with `MU_BODY_LIMIT`, `MU_BULK_LIMIT`, `MU_TIME_BUDGET`.
 One calculation worker owns an in-process per-mosaic density cache. Deadlines include queue time. A running calculation may finish after its HTTP deadline; expired queued calculations are discarded before they start.
 
+## Website
+
+`site/` contains the static calculator and method pages published at `https://mu.investigatexm.com` through GitHub Pages. `python site/build.py` (requires `pip install markdown`) renders `docs/METHOD.md` into `site/_site/`. For local testing, serve that directory and open it with `?api=http://localhost:8000`.
+
 ## Tests
 
 ```sh

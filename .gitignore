@@ -9,3 +9,4 @@ data/
 *.hdr
 *.zip
 *.part
+site/_site/
