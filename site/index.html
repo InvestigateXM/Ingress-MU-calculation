@@ -54,7 +54,15 @@ const EXAMPLE = ['52.324297, 10.182664', '52.244048, 10.167482', '52.295984, 10.
 const $ = id => document.getElementById(id);
 const fields = [$('p1'), $('p2'), $('p3')];
 const params = new URLSearchParams(location.search);
-const api = (params.get('api') || API_BASE).replace(/\/+$/, '');
+// ?api= points the page at a local server for testing; other hosts are ignored.
+function apiBase() {
+  try {
+    const u = new URL(params.get('api'));
+    if (['http:', 'https:'].includes(u.protocol) && ['localhost', '127.0.0.1'].includes(u.hostname)) return u.origin;
+  } catch (_) { /* absent or malformed */ }
+  return API_BASE;
+}
+const api = apiBase();
 
 function showError(msg) {
   $('error').textContent = msg;
@@ -82,6 +90,7 @@ function fill(el, head, rows, numeric) {
     cells.forEach((c, i) => {
       const cell = document.createElement(tag);
       cell.textContent = c;
+      if (tag === 'th') cell.scope = 'col';
       if (numeric[i]) cell.className = 'num';
       tr.appendChild(cell);
     });
@@ -128,7 +137,7 @@ async function calculate() {
     render(body);
     const q = new URLSearchParams();
     fields.forEach(f => q.append('c', f.value.trim()));
-    if (params.has('api')) q.set('api', params.get('api'));
+    if (api !== API_BASE) q.set('api', api);
     history.replaceState(null, '', '?' + q.toString().replace(/%2C/gi, ',').replace(/\+/g, '%20'));
   } catch (err) {
     showError(err.name === 'AbortError'
