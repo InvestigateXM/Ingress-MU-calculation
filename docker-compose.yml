@@ -1,0 +1,13 @@
+services:
+  mu:
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      EARTHDATA_USERNAME: ${EARTHDATA_USERNAME:-}
+      EARTHDATA_PASSWORD: ${EARTHDATA_PASSWORD:-}
+    volumes:
+      - population:/data/grump
+    restart: unless-stopped
+volumes:
+  population:

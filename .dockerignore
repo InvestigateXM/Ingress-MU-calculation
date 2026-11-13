@@ -1,0 +1,11 @@
+.git
+.env
+.env.*
+data
+**/__pycache__
+*.bil
+*.hdr
+*.zip
+site
+docs
+tests

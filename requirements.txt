@@ -1,0 +1,6 @@
+numpy==2.5.4
+s2sphere==0.2.5
+s2geometry==0.14.0
+requests==2.34.2
+fastapi>=0.115,<1
+uvicorn>=0.34,<1

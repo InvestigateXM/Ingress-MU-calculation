@@ -1,0 +1,11 @@
+MU Calculator
+Copyright 2026 investigatexm
+
+The S2 covering implementation is adapted from the 2011 Google
+s2-geometry-library-java S2RegionCoverer algorithm.
+Copyright 2005 Google Inc. All Rights Reserved.
+Licensed under the Apache License, Version 2.0.
+https://github.com/google/s2-geometry-library-java
+
+Modifications: Python implementation using s2geometry primitives, fixed historical
+covering settings and Java priority queue tie ordering.
