@@ -1,6 +1,9 @@
 services:
   mu:
     build: .
+    # The s2geometry wheel is published for Linux x86-64 only.
+    platform: linux/amd64
+    init: true
     ports:
       - "127.0.0.1:8000:8000"
     environment:

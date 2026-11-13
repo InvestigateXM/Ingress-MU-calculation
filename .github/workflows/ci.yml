@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt pytest httpx
+      - run: python -m pytest -q
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build image
+        run: docker build -t mu-calculator:ci .
+      - name: Runs as non-root and can write the data volume
+        run: |
+          test "$(docker run --rm --entrypoint id mu-calculator:ci -u)" = 10001
+          docker volume create mu-data
+          docker run --rm -v mu-data:/data/grump --entrypoint touch mu-calculator:ci /data/grump/write-test
+      - name: Entrypoint fails cleanly without credentials or data
+        run: |
+          set +e
+          out=$(docker run --rm -v mu-data:/data/grump mu-calculator:ci 2>&1)
+          code=$?
+          set -e
+          echo "$out"
+          test "$code" -eq 1
+          echo "$out" | grep -q "Set EARTHDATA_USERNAME and EARTHDATA_PASSWORD"
+          ! echo "$out" | grep -q Traceback
