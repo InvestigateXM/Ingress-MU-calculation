@@ -94,10 +94,32 @@ def test_mosaic_sampling_and_cache_isolation(tmp_path):
     assert Grump(str(tmp_path)).density_cache is not g.density_cache
 
 
-def test_field_size_guard():
+def test_minimum_level_overrides_budget():
+    points = parse_coordinates(["-9.011934,13.410663", "22.905822,33.272151", "-0.596665,35.028782"])
+    ids = cover(points)
+    assert len(ids) == 195
+    assert all(s2sphere.CellId(cid).level() >= 6 for cid in ids)
+    assert len(cover(points, min_level=0)) == 20
+    from collections import Counter
+    assert Counter(s2sphere.CellId(cid).level() for cid in ids) == {6:183, 7:7, 8:2, 9:2, 10:1}
+
+
+def test_minimum_level_preserves_small_cover():
+    points = parse_coordinates(TRIANGLE)
+    assert cover(points) == cover(points, min_level=0)
+
+
+def test_minimum_level_prevents_sibling_collapse():
+    parent = s2sphere.CellId.from_face_pos_level(0, 0, 5)
+    children = [c.id() for c in parent.children()]
+    assert normalize(children, min_level=6) == children
+
+
+def test_below_minimum_containment_and_initial_faces():
     points = parse_coordinates(["0,0", "0,120", "1,-120"])
-    with pytest.raises(ValueError, match="too large"):
-        mu_field(None, points)
+    ids = cover(points, max_cells=1)
+    assert len(ids) > 20
+    assert min(s2sphere.CellId(cid).level() for cid in ids) == 6
 
 
 def test_density_cache_is_bounded(tmp_path, monkeypatch):
@@ -110,3 +132,16 @@ def test_density_cache_is_bounded(tmp_path, monkeypatch):
     for n in range(10):
         density(g, s2sphere.CellId.from_face_pos_level(0, n, 15).id())
     assert len(g.density_cache) <= 3
+
+def test_bulk_interior_overlap_matches_scalar():
+    points = parse_coordinates(["1,0", "1,120", "1,-120"])
+    ids = cover(points)
+    fast, area = overlaps(points, ids)
+    scalar = []
+    for offset in range(0, len(ids), 500):
+        scalar.extend(overlaps(points, ids[offset:offset+500])[0])
+    assert [c[:2] for c in fast] == [c[:2] for c in scalar]
+    assert np.array([c[2] for c in fast]) == pytest.approx(
+        np.array([c[2] for c in scalar]), rel=1e-10, abs=1e-8
+    )
+    assert sum(c[2] for c in fast) == pytest.approx(area, rel=1e-10)

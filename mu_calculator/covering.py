@@ -81,7 +81,7 @@ class JHeap:
         return res
 
 
-def cover(pts_e6, max_cells=20, max_level=13, min_level=0, level_mod=1):
+def cover(pts_e6, max_cells=20, max_level=13, min_level=6, level_mod=1):
     """Cover a triangle while preserving historical candidate queue ordering."""
     R = Region(pts_e6)
     result = []

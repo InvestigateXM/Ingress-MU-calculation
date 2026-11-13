@@ -2,7 +2,7 @@
 
 Calculate Mind Units from three portal coordinates. This is an independent empirical reconstruction, not affiliated with or endorsed by Niantic.
 
-The model uses GRUMP v1 year-2000 UN-adjusted counts, historical 2011 S2 covering, spherical overlap areas and a minimum of one MU per level-6 region. See [the method](docs/METHOD.md).
+The model uses GRUMP v1 year-2000 UN-adjusted counts, historical 2011 S2 covering with minimum level 6, spherical overlap areas and a minimum of one MU per level-6 region. See [the method](docs/METHOD.md).
 
 ## Quick start
 
@@ -14,13 +14,13 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Create a free [NASA Earthdata account](https://urs.earthdata.nasa.gov/) and approve the SEDAC application under Applications > Authorized Apps. First startup downloads 232 country archives and extracts 234 raster pairs into the named `population` volume. Allow several GB for archives and about 3.2 GB for extracted files. The repository and image contain no population rasters. Completed archives and extracted files are reused; interrupted archives restart. Extraction checks ZIP CRCs; every startup checks required file sizes. The container runs as non-root and publishes localhost port 8000.
+Create a free [NASA Earthdata account](https://urs.earthdata.nasa.gov/) and approve the SEDAC application under Applications > Authorized Apps. First startup downloads 232 country archives and extracts 234 raster pairs into the named `population` volume. Allow several GB for archives and about 3.2 GB for extracted files. The repository and image contain no population rasters or derived density tables. Completed archives and extracted files are reused; interrupted archives restart. Extraction checks ZIP CRCs; every startup checks required file sizes. The container runs as non-root and publishes localhost port 8000.
 
 ```sh
 docker compose run --rm mu calc "52.324297,10.182664" "52.244048,10.167482" "52.295984,10.231064"
 ```
 
-Expected MU: **3046**. Startup checks this triangle before accepting requests. See [HTTPS deployment](deploy/README.md).
+Expected MU: **3046**. Startup builds a global level-6 density table and checks this triangle before accepting requests. The listener (including `/health`) is unavailable until these steps finish. See [HTTPS deployment](deploy/README.md).
 
 For development, use Linux Python 3.12 and `pip install -e .`. Set `GRUMP_DATA` to a directory containing `bil/`, then run `python -m mu_calculator serve`. Missing files are downloaded. Credentials come only from environment variables; Compose reads `.env`. `GRUMP_DIR` overrides the calculator's extracted-raster location, while startup checks completeness under `GRUMP_DATA`.
 
@@ -57,7 +57,7 @@ Response:
   "mu":3046,
   "area_km2":16.311625962717194,
   "coordinates":["52.324297, 10.182664","52.244048, 10.167482","52.295984, 10.231064"],
-  "model":"grump2000-s2java2011-l6min1"
+  "model":"grump2000-s2java2011-min6-l6min1"
 }
 ```
 
@@ -91,7 +91,7 @@ Response:
     {"index":0,"id":"field-1","ok":true,"mu":3046,"area_km2":16.311625962717194,"coordinates":["52.324297, 10.182664","52.244048, 10.167482","52.295984, 10.231064"]},
     {"index":1,"ok":false,"error":"The three coordinates must be distinct at six decimal places."}
   ],
-  "model":"grump2000-s2java2011-l6min1"
+  "model":"grump2000-s2java2011-min6-l6min1"
 }
 ```
 
@@ -99,20 +99,29 @@ Order is preserved; `id` is echoed only when supplied. Successful items include 
 
 | Endpoint or rule | Behavior |
 | --- | --- |
-| `GET /health` | `{"ok":true,"rasters":234,"model":"grump2000-s2java2011-l6min1"}` after startup self-test |
+| `GET /health` | `{"ok":true,"rasters":234,"model":"grump2000-s2java2011-min6-l6min1"}` after startup self-test |
 | `GET /` | JSON description, documentation links and model |
 | `GET /docs` | Generated interactive API documentation |
 | Request body | 32,768 bytes; 413 above this, including streamed bodies |
 | Bulk | 1–50 fields; otherwise 400 |
-| Field size | The covering may need at most 4^11 (about 4.2 million) density samples, which allows sides of roughly 600 km; larger fields get 400 |
+| Field size | No size or density-sample cap; all valid spherical triangles are supported |
 | Request deadline | 20 seconds; single 504; bulk items get `ok:false,error:"deadline exceeded"` |
 | Invalid JSON, shape or coordinates | Single 400; coordinate errors remain per-item in bulk |
 | Unexpected failure | Generic 500 JSON error |
 | CORS | Origin `*`; GET/POST/OPTIONS |
 | Rate limiting | Enforce at reverse proxy/edge; return 429 with Retry-After |
 
-Errors: `{"error":"message","model":"grump2000-s2java2011-l6min1"}`.
-Limits are configurable with `MU_BODY_LIMIT`, `MU_BULK_LIMIT`, `MU_TIME_BUDGET` and `MU_MAX_SAMPLES`. The sampler reads every level-15 cell inside each covering cell, so cost grows with field size; the largest accepted fields take a few seconds and under 300 MB on a desktop CPU. The per-mosaic density cache is flushed at 100,000 entries.
+Errors: `{"error":"message","model":"grump2000-s2java2011-min6-l6min1"}`.
+Limits are configurable with `MU_BODY_LIMIT`, `MU_BULK_LIMIT` and `MU_TIME_BUDGET`. `MU_MAX_SAMPLES` has been removed. Level-6 densities are read from a memory-mapped table; finer covering cells are sampled on demand with a per-mosaic cache flushed at 100,000 entries. Detail includes every covering cell and region, without truncation; enormous fields can produce several MB of JSON.
+
+The minimum level takes precedence over the soft 20-cell covering budget. Cells below level 6 must be expanded even when the budget is exceeded; mandatory single-child refinement may continue beyond level 6.
+
+### Density table lifecycle
+
+After download, `serve`, `calc` and `build-tables` automatically build a missing or stale table beside `bil/`. Run `python -m mu_calculator build-tables` to prepare it explicitly. Allow roughly 8?10 minutes for table preparation on a six-worker desktop, plus download time; slower machines can take substantially longer. The global level-6 table has 24,576 float64 values (196,736 bytes including its NumPy header), plus a small JSON manifest and lock file. Allow additional space for one temporary table during rebuild; obsolete fingerprinted tables can be removed when no process uses them. No derived data are shipped in the repository or image.
+
+Each value independently samples its cell's level-15 centers in contiguous IJ order and applies the original NumPy float64 mean. Parent values are never reconstructed from child means. A SHA-256 fingerprint covers ordered raster names and contents, sampling/reduction code and table version. Raster hashing runs at startup. Builders hold an OS lock, use bounded chunks and publish the finished table and manifest by atomic rename. Interrupted builds restart; an incomplete or stale table is never served. `MU_TABLE_WORKERS` controls build parallelism (default up to six CPU cores); request serving uses one worker.
+
 One calculation worker owns an in-process per-mosaic density cache. Deadlines include queue time. A running calculation may finish after its HTTP deadline; expired queued calculations are discarded before they start.
 
 ## Website
@@ -127,7 +136,7 @@ python -m pytest -q
 GRUMP_DIR=/absolute/path/to/grump/bil python -m pytest -q
 ```
 
-Tests cover parsing, rounding, heap ties, covering, spherical areas, mosaic sampling, regional minimums, API limits and deadlines. The optional raster test uses six fixed triangles at varied scales and regions.
+Tests cover parsing, rounding, heap ties, covering, spherical areas, mosaic sampling, regional minimums, API limits and deadlines. The optional raster test uses seven fixed triangles at varied scales and regions.
 
 ## Data and license
 

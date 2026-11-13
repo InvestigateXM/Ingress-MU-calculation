@@ -8,7 +8,8 @@ from mu_calculator import api
 
 @pytest.fixture
 def client(monkeypatch):
-    monkeypatch.setattr(api, "Grump", lambda: SimpleNamespace(r=[1]))
+    monkeypatch.setattr(api, "ensure_tables", lambda folder: [])
+    monkeypatch.setattr(api, "Grump", lambda: SimpleNamespace(r=[1], folder="unused"))
     monkeypatch.setattr(
         api,
         "calculate",

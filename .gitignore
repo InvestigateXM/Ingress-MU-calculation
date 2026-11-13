@@ -10,3 +10,5 @@ data/
 *.zip
 *.part
 site/_site/
+density-l6-*
+density-l6.npz-meta*

@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException
 from . import Grump, MODEL
 from .coordinates import calculate
+from .tables import ensure_tables
 
 BODY_LIMIT = int(os.environ.get("MU_BODY_LIMIT", 32768))
 BULK_LIMIT = int(os.environ.get("MU_BULK_LIMIT", 50))
@@ -25,6 +26,9 @@ executor = ThreadPoolExecutor(max_workers=1)
 @asynccontextmanager
 async def lifespan(app):
     app.state.grump = Grump()
+    app.state.grump.density_table = await asyncio.to_thread(
+        ensure_tables, app.state.grump.folder
+    )
     if not app.state.grump.r or calculate(app.state.grump, SELF_TEST)["mu"] != 3046:
         raise RuntimeError(
             "Population data startup self-test failed (expected 3046 MU)."

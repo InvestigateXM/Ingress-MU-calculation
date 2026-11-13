@@ -8,20 +8,28 @@ from .download import ensure_data
 
 def main():
     command = sys.argv[1] if len(sys.argv) > 1 else "serve"
-    if command not in ("serve", "calc", "download"):
+    if command not in ("serve", "calc", "download", "build-tables"):
         raise SystemExit(
-            "Usage: python -m mu_calculator [serve|calc p1 p2 p3|download]"
+            "Usage: python -m mu_calculator [serve|calc p1 p2 p3|download|build-tables]"
         )
     folder = os.environ.get("GRUMP_DATA", "/data/grump")
     ensure_data(folder)
     os.environ.setdefault("GRUMP_DIR", os.path.join(folder, "bil"))
     if command == "download":
         return
+    from .tables import ensure_tables
+
+    table = (ensure_tables(os.environ["GRUMP_DIR"])
+             if command != "serve" else None)
+    if command == "build-tables":
+        return
     if command == "calc":
         from . import Grump, MODEL
         from .coordinates import calculate
 
-        print(json.dumps(dict(calculate(Grump(), sys.argv[2:]), model=MODEL)))
+        grump = Grump()
+        grump.density_table = table
+        print(json.dumps(dict(calculate(grump, sys.argv[2:]), model=MODEL)))
     else:
         import uvicorn
 

@@ -9,3 +9,5 @@ data
 site
 docs
 tests
+density-l6-*
+density-l6.npz-meta*

@@ -16,6 +16,8 @@ class Grump:
 
     def __init__(self, folder=None):
         folder = folder or os.environ.get("GRUMP_DIR", "/data/grump/bil")
+        self.folder = folder
+        self.density_table = None
         self.r = []
         self.density_cache = {}
         for h in sorted(glob.glob(os.path.join(folder, "*up00ag.hdr"))):
@@ -90,6 +92,9 @@ def l15_centres(cell_id, level=15):
 
 def density(g, cell_id, level=15):
     """Mean raw count at descendant centers, cached separately for each mosaic."""
+    if level == 15 and s2sphere.CellId(cell_id).level() == 6 and g.density_table is not None:
+        from .tables import lookup
+        return lookup(g.density_table, cell_id)
     k = (cell_id, level)
     if k not in g.density_cache:
         if len(g.density_cache) >= CACHE_LIMIT:
@@ -157,7 +162,31 @@ def overlaps(pts_e6, cids):
     area = tri_area_km2(vs)
     out = []
     tn = _normals(vs)
+    interiors = {}
+    if len(cids) >= 1000:
+        # Clip only boundary cells. Bulk interior areas use the same two
+        # spherical triangles, avoiding Python clipping on thousands of cells.
+        import s2geometry as s2
+        vertices = np.empty((len(cids), 4, 3))
+        for i, cid in enumerate(cids):
+            cell = s2.S2Cell(s2.S2CellId(cid))
+            for k in range(4):
+                v = cell.GetVertex(k)
+                vertices[i, k] = (v.x(), v.y(), v.z())
+        inside = np.all(vertices @ np.asarray(tn).T >= 0, axis=(1, 2))
+        indices = np.flatnonzero(inside)
+        v = vertices[indices]
+        areas = np.zeros(len(indices))
+        for k in (1, 2):
+            a, b, c = v[:, 0], v[:, k], v[:, k + 1]
+            dot = lambda x, y: np.sum(x * y, axis=-1)
+            areas += 2 * np.arctan2(abs(dot(a, np.cross(b, c))),
+                                   1 + dot(a, b) + dot(b, c) + dot(c, a))
+        interiors = dict(zip((cids[i] for i in indices), areas * RE**2))
     for cid in cids:
+        if cid in interiors:
+            out.append((cid, s2sphere.CellId(cid).level(), float(interiors[cid])))
+            continue
         cell = s2sphere.Cell(s2sphere.CellId(cid))
         poly = [np.array(list(cell.get_vertex(k))) for k in range(4)]
         for n in tn:
