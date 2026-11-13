@@ -14,14 +14,12 @@ D = 1 / 120
 class Grump:
     """Memory-mapped mosaic; sum valid counts where country rasters overlap."""
 
-    def __init__(self, folder=None, only=None):
+    def __init__(self, folder=None):
         folder = folder or os.environ.get("GRUMP_DIR", "/data/grump/bil")
         self.r = []
         self.density_cache = {}
         for h in sorted(glob.glob(os.path.join(folder, "*up00ag.hdr"))):
             iso = os.path.basename(h)[:3]
-            if only and iso not in only:
-                continue
             with open(h) as header:
                 hd = {
                     line.split()[0]: line.split()[1] for line in header if line.strip()
@@ -39,12 +37,11 @@ class Grump:
             np.floor((90 - (lat + D / 2)) / D).astype(np.int64),
         )
 
-    def sample(self, lat, lng, per_country=False):
+    def sample(self, lat, lng):
         lat = np.atleast_1d(np.asarray(lat, float))
         lng = np.atleast_1d(np.asarray(lng, float))
         gi, gj = self.pix(lat, lng)
         tot = np.zeros(len(lat))
-        by = {}
         lo_i, hi_i, lo_j, hi_j = gi.min(), gi.max(), gj.min(), gj.max()
         for iso, gi0, gj0, a in self.r:
             # Skip rasters whose extent cannot contain any sample.
@@ -58,9 +55,7 @@ class Grump:
             ok = v > -1e30
             idx = np.nonzero(m)[0][ok]
             tot[idx] += v[ok]
-            if per_country:
-                by[iso] = by.get(iso, 0) + float(v[ok].sum())
-        return (tot, by) if per_country else tot
+        return tot
 
 
 def l15_centres(cell_id, level=15):

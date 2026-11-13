@@ -27,10 +27,7 @@ def region_result(pts, result):
             for child, _, overlap in overlaps(pts, children)[0]:
                 if overlap > 1e-12:
                     groups[child] += overlap * density
-    return (
-        max(1, math.floor(sum((max(1, value) for value in groups.values())) + 0.5)),
-        dict(groups),
-    )
+    return round_mu(sum(max(1, value) for value in groups.values())), dict(groups)
 
 
 def mu_field(grump, points):
