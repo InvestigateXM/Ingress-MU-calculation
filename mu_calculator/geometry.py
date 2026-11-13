@@ -11,6 +11,7 @@ D = 1 / 120
 
 
 class Grump:
+    """Memory-mapped mosaic; sum valid counts where country rasters overlap."""
 
     def __init__(self, folder=None, only=None):
         folder = folder or os.environ.get("GRUMP_DIR", "/data/grump/bil")
@@ -20,7 +21,10 @@ class Grump:
             iso = os.path.basename(h)[:3]
             if only and iso not in only:
                 continue
-            hd = {l.split()[0]: l.split()[1] for l in open(h) if l.strip()}
+            with open(h) as header:
+                hd = {
+                    line.split()[0]: line.split()[1] for line in header if line.strip()
+                }
             nr, nc = (int(hd["NROWS"]), int(hd["NCOLS"]))
             a = np.memmap(h[:-4] + ".bil", dtype="<f4", mode="r", shape=(nr, nc))
             gi0 = round((float(hd["ULXMAP"]) - D / 2 + 180) / D)
@@ -85,6 +89,7 @@ def l15_centres(cell_id, level=15):
 
 
 def density(g, cell_id, level=15):
+    """Mean raw count at descendant centers, cached separately for each mosaic."""
     k = (cell_id, level)
     if k not in g.density_cache:
         lat, lng = l15_centres(cell_id, level)

@@ -10,6 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.exceptions import HTTPException
 from . import Grump, MODEL
 from .coordinates import calculate
 
@@ -69,6 +70,11 @@ app.add_middleware(
 
 def error(message, status=400):
     return JSONResponse({"error": message, "model": MODEL}, status_code=status)
+
+
+@app.exception_handler(HTTPException)
+async def http_error(request, exception):
+    return error(str(exception.detail), exception.status_code)
 
 
 @app.exception_handler(BodyTooLarge)

@@ -30,6 +30,7 @@ class Region:
 
 
 class JHeap:
+    """Java PriorityQueue sift rules, including unstable equal-priority ties."""
 
     def __init__(self):
         self.q = []
@@ -78,6 +79,7 @@ class JHeap:
 
 
 def cover(pts_e6, max_cells=20, max_level=13, min_level=0, level_mod=1):
+    """Cover a triangle while preserving historical candidate queue ordering."""
     R = Region(pts_e6)
     result = []
     pq = JHeap()
