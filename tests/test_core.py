@@ -3,7 +3,8 @@ import itertools
 import numpy as np
 import pytest
 import s2sphere
-from mu_calculator.calculator import round_mu, region_result
+from mu_calculator import geometry
+from mu_calculator.calculator import mu_field, round_mu, region_result
 from mu_calculator.coordinates import parse_coordinates
 from mu_calculator.covering import cover, normalize, JHeap
 from mu_calculator.geometry import overlaps, unit, tri_area_km2, RE, Grump, density
@@ -91,3 +92,21 @@ def test_mosaic_sampling_and_cache_isolation(tmp_path):
     assert g.sample([0], [1 / 120])[0] == 5
     assert g.sample([30], [30])[0] == 0
     assert Grump(str(tmp_path)).density_cache is not g.density_cache
+
+
+def test_field_size_guard():
+    points = parse_coordinates(["0,0", "0,120", "1,-120"])
+    with pytest.raises(ValueError, match="too large"):
+        mu_field(None, points)
+
+
+def test_density_cache_is_bounded(tmp_path, monkeypatch):
+    (tmp_path / "aaaup00ag.hdr").write_text(
+        "NROWS 1\nNCOLS 1\nULXMAP 0.004166666666666667\nULYMAP 0.004166666666666667\n"
+    )
+    np.array([1], dtype="<f4").tofile(tmp_path / "aaaup00ag.bil")
+    monkeypatch.setattr(geometry, "CACHE_LIMIT", 3)
+    g = Grump(str(tmp_path))
+    for n in range(10):
+        density(g, s2sphere.CellId.from_face_pos_level(0, n, 15).id())
+    assert len(g.density_cache) <= 3

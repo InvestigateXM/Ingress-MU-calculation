@@ -7,6 +7,7 @@ import numpy as np
 import s2sphere
 
 RE = 6371.01
+CACHE_LIMIT = 100_000
 D = 1 / 120
 
 
@@ -44,7 +45,11 @@ class Grump:
         gi, gj = self.pix(lat, lng)
         tot = np.zeros(len(lat))
         by = {}
+        lo_i, hi_i, lo_j, hi_j = gi.min(), gi.max(), gj.min(), gj.max()
         for iso, gi0, gj0, a in self.r:
+            # Skip rasters whose extent cannot contain any sample.
+            if gi0 > hi_i or gi0 + a.shape[1] <= lo_i or gj0 > hi_j or gj0 + a.shape[0] <= lo_j:
+                continue
             i, j = (gi - gi0, gj - gj0)
             m = (j >= 0) & (j < a.shape[0]) & (i >= 0) & (i < a.shape[1])
             if not m.any():
@@ -92,6 +97,8 @@ def density(g, cell_id, level=15):
     """Mean raw count at descendant centers, cached separately for each mosaic."""
     k = (cell_id, level)
     if k not in g.density_cache:
+        if len(g.density_cache) >= CACHE_LIMIT:
+            g.density_cache.clear()  # ponytail: full flush; use an LRU if hit rate matters
         lat, lng = l15_centres(cell_id, level)
         g.density_cache[k] = float(g.sample(lat, lng).mean())
     return g.density_cache[k]

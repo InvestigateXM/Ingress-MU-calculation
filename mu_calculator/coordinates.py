@@ -15,7 +15,7 @@ def parse_coordinates(values):
     for i, value in enumerate(values, 1):
         if isinstance(value, dict) and set(value) == {"lat", "lng"}:
             value = str(value["lat"]) + "," + str(value["lng"])
-        if not isinstance(value, str) or len(value) > 100:
+        if not isinstance(value, str) or len(value) > 100 or not value.isascii():
             raise ValueError(f"Coordinate {i}: use latitude, longitude.")
         parts = value.split(",")
         if len(parts) != 2:

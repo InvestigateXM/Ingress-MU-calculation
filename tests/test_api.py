@@ -78,3 +78,26 @@ def test_deadlines(client, monkeypatch):
     assert client.post("/getMU", json={"coordinates": []}).status_code == 504
     response = client.post("/getMUbulk", json={"fields": [[], []]}).json()
     assert all(x["error"] == "deadline exceeded" for x in response["results"])
+
+
+def test_non_json_numbers_and_deep_nesting(client):
+    for body in ['{"coordinates": NaN}', '{"id": Infinity}', "[" * 30000]:
+        response = client.post("/getMU", content=body)
+        assert response.status_code == 400
+        assert response.json()["error"] == "Malformed JSON."
+
+
+def test_unexpected_error_is_generic_and_has_cors(client, monkeypatch):
+    def broken(g, c):
+        raise RuntimeError("/secret/path")
+
+    monkeypatch.setattr(api, "calculate", broken)
+    response = client.post(
+        "/getMU",
+        json={"coordinates": []},
+        headers={"Origin": "https://mu.investigatexm.com"},
+    )
+    assert response.status_code == 500
+    assert response.json()["error"] == "Calculation failed."
+    assert "secret" not in response.text
+    assert response.headers["access-control-allow-origin"] == "*"

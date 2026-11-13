@@ -14,7 +14,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Create a free [NASA Earthdata account](https://urs.earthdata.nasa.gov/) and approve the SEDAC application under Applications > Authorized Apps. First startup downloads 232 country archives and extracts 234 raster pairs into the named `population` volume. Allow several GB for archives and about 3.1 GB for extracted files. The repository and image contain no population rasters. Completed archives and extracted files are reused; interrupted archives restart. Extraction checks ZIP CRCs; every startup checks required file sizes. The container runs as non-root and publishes localhost port 8000.
+Create a free [NASA Earthdata account](https://urs.earthdata.nasa.gov/) and approve the SEDAC application under Applications > Authorized Apps. First startup downloads 232 country archives and extracts 234 raster pairs into the named `population` volume. Allow several GB for archives and about 3.2 GB for extracted files. The repository and image contain no population rasters. Completed archives and extracted files are reused; interrupted archives restart. Extraction checks ZIP CRCs; every startup checks required file sizes. The container runs as non-root and publishes localhost port 8000.
 
 ```sh
 docker compose run --rm mu calc "52.324297,10.182664" "52.244048,10.167482" "52.295984,10.231064"
@@ -30,7 +30,7 @@ Download selected countries independently:
 python -m mu_calculator.download --directory /data/grump lux mlt
 ```
 
-The official `s2geometry` binary wheel requires Linux for this setup.
+The `s2geometry` wheel is published for x86-64 Linux and macOS only, so the image is built for `linux/amd64` (emulated on ARM hosts).
 
 ## API
 
@@ -104,6 +104,7 @@ Order is preserved; `id` is echoed only when supplied. Successful items include 
 | `GET /docs` | Generated interactive API documentation |
 | Request body | 32,768 bytes; 413 above this, including streamed bodies |
 | Bulk | 1–50 fields; otherwise 400 |
+| Field size | The covering may need at most 4^11 (about 4.2 million) density samples, which allows sides of roughly 600 km; larger fields get 400 |
 | Request deadline | 20 seconds; single 504; bulk items get `ok:false,error:"deadline exceeded"` |
 | Invalid JSON, shape or coordinates | Single 400; coordinate errors remain per-item in bulk |
 | Unexpected failure | Generic 500 JSON error |
@@ -111,7 +112,7 @@ Order is preserved; `id` is echoed only when supplied. Successful items include 
 | Rate limiting | Enforce at reverse proxy/edge; return 429 with Retry-After |
 
 Errors: `{"error":"message","model":"grump2000-s2java2011-l6min1"}`.
-Limits are configurable with `MU_BODY_LIMIT`, `MU_BULK_LIMIT`, `MU_TIME_BUDGET`.
+Limits are configurable with `MU_BODY_LIMIT`, `MU_BULK_LIMIT`, `MU_TIME_BUDGET` and `MU_MAX_SAMPLES`. The sampler reads every level-15 cell inside each covering cell, so cost grows with field size; the largest accepted fields take a few seconds and under 300 MB on a desktop CPU. The per-mosaic density cache is flushed at 100,000 entries.
 One calculation worker owns an in-process per-mosaic density cache. Deadlines include queue time. A running calculation may finish after its HTTP deadline; expired queued calculations are discarded before they start.
 
 ## Website

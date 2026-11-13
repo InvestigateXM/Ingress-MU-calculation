@@ -68,8 +68,10 @@ app.add_middleware(
 )
 
 
-def error(message, status=400):
-    return JSONResponse({"error": message, "model": MODEL}, status_code=status)
+def error(message, status=400, **kwargs):
+    return JSONResponse(
+        {"error": message, "model": MODEL}, status_code=status, **kwargs
+    )
 
 
 @app.exception_handler(HTTPException)
@@ -85,13 +87,18 @@ async def too_large(request, exception):
 @app.exception_handler(Exception)
 async def unexpected(request, exception):
     logging.exception("Request failed", exc_info=exception)
-    return error("Calculation failed.", 500)
+    # This handler runs outside the CORS middleware, so add the header here.
+    return error("Calculation failed.", 500, headers={"Access-Control-Allow-Origin": "*"})
+
+
+def reject_constant(name):
+    raise ValueError(name)
 
 
 async def payload(request):
     try:
-        value = json.loads(await request.body())
-    except (ValueError, UnicodeError):
+        value = json.loads(await request.body(), parse_constant=reject_constant)
+    except (ValueError, RecursionError):
         raise ValueError("Malformed JSON.") from None
     if not isinstance(value, dict):
         raise ValueError("Expected a JSON object.")
