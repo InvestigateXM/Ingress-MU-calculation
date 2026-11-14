@@ -2,7 +2,7 @@
 
 This document describes, step by step, how the number of Mind Units (MU) awarded for a control field can be computed from the three portal coordinates of the field. The raster, sampling, covering-queue, overlap and aggregation rules are specified below. Exact S2 boundary behaviour is defined by the versioned primitives identified in section 4; those primitives must be reused or ported for an exact re-implementation.
 
-The method is an independent empirical reconstruction; it is not official and is not affiliated with Niantic.
+The method is an independent empirical reconstruction; it is not official and is not affiliated with Niantic. It builds on Gordon Ludlow's [Reverse Engineering MU](https://gordonludlow.com/ingress/reverse-engineering-mu/), which was the starting point for this work.
 
 ## Contents
 
@@ -961,6 +961,10 @@ Each item lists what goes wrong when the step is done differently.
 
 * Center for International Earth Science Information Network (CIESIN), Columbia University; International Food Policy Research Institute (IFPRI); The World Bank; Centro Internacional de Agricultura Tropical (CIAT). 2011. *Global Rural-Urban Mapping Project, Version 1 (GRUMPv1): Population Count Grid.* Palisades, NY: NASA Socioeconomic Data and Applications Center (SEDAC). [doi:10.7927/H4VT1Q1H](https://doi.org/10.7927/H4VT1Q1H). [NASA metadata and use constraints](https://cmr.earthdata.nasa.gov/search/concepts/C3540929345-ESDIS.umm_json). [Earthdata Search download access](https://search.earthdata.nasa.gov/search/granules?p=C3540929345-ESDIS).
 * NASA Earthdata (free registration, required for download): `https://urs.earthdata.nasa.gov/`.
+
+### Prior work
+
+* Gordon Ludlow. Reverse Engineering MU. `https://gordonludlow.com/ingress/reverse-engineering-mu/`. The basis on which this reconstruction was developed.
 
 ### S2 library and documentation
 

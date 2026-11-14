@@ -185,6 +185,10 @@ GRUMP_DIR=/absolute/path/to/grump/bil python -m pytest -q
 
 Tests cover parsing, rounding, heap ties, covering, spherical areas, mosaic sampling, regional minimums, API limits and deadlines. The optional raster test uses seven fixed triangles at varied scales and regions.
 
+## Acknowledgement
+
+This work builds on Gordon Ludlow's [Reverse Engineering MU](https://gordonludlow.com/ingress/reverse-engineering-mu/), which was the starting point for the reconstruction.
+
 ## Data and license
 
 Code: [Apache-2.0](LICENSE). The covering logic follows the 2011 Google [s2-geometry-library-java](https://github.com/google/s2-geometry-library-java) S2RegionCoverer and Java priority queue ordering. See [NOTICE](NOTICE) for attribution and modifications.

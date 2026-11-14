@@ -35,7 +35,7 @@ TEMPLATE = """<!doctype html>
 {body}
 </main>
 <footer>
-  Independent reconstruction; not affiliated with or endorsed by Niantic. Population data: Global Rural-Urban Mapping Project, Version 1 (GRUMP v1), CIESIN / NASA SEDAC. Source and API description: <a href="https://github.com/InvestigateXM/Ingress-MU-calculation">GitHub</a>.
+  Independent reconstruction; not affiliated with or endorsed by Niantic. Based on Gordon Ludlow's <a href="https://gordonludlow.com/ingress/reverse-engineering-mu/">Reverse Engineering MU</a>. Population data: Global Rural-Urban Mapping Project, Version 1 (GRUMP v1), CIESIN / NASA SEDAC. Source and API description: <a href="https://github.com/InvestigateXM/Ingress-MU-calculation">GitHub</a>.
 </footer>
 </body>
 </html>
