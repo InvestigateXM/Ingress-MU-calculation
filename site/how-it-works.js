@@ -57,6 +57,14 @@ function build(root, tr) {
     if (tr.bins && tr.bins[id] !== undefined) n.setAttribute('data-d', tr.bins[id]);
     n.setAttribute('vector-effect', 'non-scaling-stroke');
     nodes[id] = n;
+    if (tr.id === 'a1' && id.startsWith('d13:')) {
+      const i = Number(id.split(':')[1]);
+      const row = tr.tables.samples.r[i];
+      const label = `Sample ${i + 1}: pixel (${row[1]}, ${row[2]}), count ${num(row[3], 4)}`;
+      n.appendChild(el('title', {}, label));
+      n.setAttribute('tabindex', '0');
+      n.setAttribute('aria-label', label);
+    }
     svg.appendChild(n);
   }
   // scale bar and north marker, in the lower left and upper right corner
@@ -75,6 +83,15 @@ function build(root, tr) {
   const wrap = h('div', { class: 'stage-wrap', tabindex: '0', role: 'group',
     'aria-label': 'Animation, ' + tr.title + '. Left and right arrow keys change the step, space starts and stops.' });
   wrap.appendChild(svg);
+  const sampleInfo = h('div', { class: 'sample-info', hidden: '' });
+  wrap.appendChild(sampleInfo);
+  for (const [id, n] of Object.entries(nodes)) {
+    if (!id.startsWith('d13:')) continue;
+    const reveal = () => { sampleInfo.textContent = n.getAttribute('aria-label'); sampleInfo.hidden = false; };
+    const hide = () => { sampleInfo.hidden = true; };
+    n.addEventListener('focus', reveal); n.addEventListener('mouseenter', reveal);
+    n.addEventListener('blur', hide); n.addEventListener('mouseleave', hide);
+  }
   const legend = h('div', { class: 'legend' });
   wrap.appendChild(legend);
 
@@ -143,6 +160,16 @@ function sizeStage(ui, tr) {
   const w = ui.svg.getBoundingClientRect().width || 640;
   const u = tr.view[2] / w;
   ui.svg.style.setProperty('--u', u);
+  // Vertex labels move a fixed screen distance outward from their triangle.
+  for (const [id, kind, g] of tr.els) {
+    if (kind !== 't' || !/^t(A|B|C|F3|G3)$/.test(id)) continue;
+    const field = tr.els.find(e => e[0] === (tr.id === 'a5' ? (id === 'tG3' ? 'fG' : 'fF') : 'fld'));
+    if (!field) continue;
+    const centre = field[2].reduce((a, p) => [a[0] + p[0] / 3, a[1] + p[1] / 3], [0, 0]);
+    const dx = g[0] - centre[0], dy = g[1] - centre[1], len = Math.hypot(dx, dy);
+    ui.nodes[id].setAttribute('x', g[0] + dx / len * 18 * u);
+    ui.nodes[id].setAttribute('y', g[1] + dy / len * 18 * u);
+  }
   for (const [id, kind] of tr.els) if (kind === 'd') ui.nodes[id].setAttribute('r', 3.6 * u);
   const sp = 6 * u;
   ui.svg.querySelectorAll('pattern').forEach(p => {
@@ -153,6 +180,43 @@ function sizeStage(ui, tr) {
       if (l.hasAttribute('x2')) l.setAttribute('y2', sp); else l.setAttribute('x2', sp);
     });
   });
+  placeLabels(ui, tr);
+}
+
+function placeLabels(ui, tr) {
+  const u = tr.view[2] / (ui.svg.getBoundingClientRect().width || 640);
+  const [x, y, w, ht] = tr.view;
+  const occupied = [];
+  ui.svg.querySelectorAll('.label-leader').forEach(n => n.remove());
+  // Give vertex names priority; move numeric labels only as far as necessary.
+  const labels = tr.els.filter(e => e[1] === 't' && ui.nodes[e[0]].dataset.s === 't')
+    .sort((a, b) => Number(/^t(A|B|C|F3|G3)$/.test(b[0])) - Number(/^t(A|B|C|F3|G3)$/.test(a[0])));
+  for (const [id, , g] of labels) {
+    const n = ui.nodes[id], vertex = /^t(A|B|C|F3|G3)$/.test(id);
+    const bx = vertex ? Number(n.getAttribute('x')) : g[0];
+    const by = vertex ? Number(n.getAttribute('y')) : g[1];
+    const box = n.getBBox(), hw = box.width / 2 + 3 * u, hh = box.height / 2 + 2 * u;
+    let chosen;
+    search: for (const shift of [0, -24, 24, -48, 48]) {
+    for (const offset of [0, -18, 18, -36, 36, -54, 54, -72, 72]) {
+      const cx = Math.max(x + hw, Math.min(x + w - hw, bx + shift * u));
+      const cy = Math.max(y + hh, Math.min(y + ht - hh, by + offset * u));
+      const r = [cx - hw, cy - hh, cx + hw, cy + hh];
+      if (!occupied.some(b => r[0] < b[2] && b[0] < r[2] && r[1] < b[3] && b[1] < r[3])) {
+        chosen = [cx, cy, r]; break search;
+      }
+    }
+    }
+    if (!chosen) chosen = [bx, by, [bx - hw, by - hh, bx + hw, by + hh]];
+    n.setAttribute('x', chosen[0]); n.setAttribute('y', chosen[1]);
+    occupied.push(chosen[2]);
+    if (!vertex && Math.hypot(chosen[0] - g[0], chosen[1] - g[1]) > 8 * u) {
+      ui.svg.insertBefore(el('line', { class: 'label-leader', x1: g[0], y1: g[1],
+        x2: chosen[0], y2: chosen[1], 'vector-effect': 'non-scaling-stroke' }), n);
+    }
+  }
+  const firstLabel = ui.svg.querySelector('.k-t');
+  ui.svg.querySelectorAll('.label-leader').forEach(n => ui.svg.insertBefore(n, firstLabel));
 }
 
 function render(ui, tr, k) {
@@ -162,10 +226,12 @@ function render(ui, tr, k) {
   for (const [id, kind] of tr.els) {
     const s = st[id] || '';
     ui.nodes[id].setAttribute('data-s', s);
+    if (kind === 'd') ui.nodes[id].setAttribute('tabindex', s && id.startsWith('d13:') ? '0' : '-1');
     if (s) used[kind + ':' + s] = true;
   }
   // field outlines are drawn on top of the cells
   for (const [id, kind] of tr.els) if (kind === 'p' && (st[id] === 'field' || st[id] === 'field2')) ui.svg.insertBefore(ui.nodes[id], ui.svg.querySelector('.sb'));
+  for (const [id, kind] of tr.els) if (kind === 't') ui.svg.insertBefore(ui.nodes[id], ui.svg.querySelector('.sb'));
   ui.cap.textContent = step.c;
   ui.eq.textContent = step.eq || '';
   ui.eq.hidden = !step.eq;
@@ -223,6 +289,7 @@ function render(ui, tr, k) {
   ui.prevB.disabled = k === 0;
   ui.firstB.disabled = k === 0;
   ui.nextB.disabled = k === tr.steps.length - 1;
+  placeLabels(ui, tr);
 }
 
 async function init(section) {
@@ -239,7 +306,7 @@ async function init(section) {
   const ui = build(root, tr);
   let k = 0, timer = null;
   const last = tr.steps.length - 1;
-  const show = n => { k = Math.max(0, Math.min(last, n)); render(ui, tr, k); };
+  const show = n => { k = Math.max(0, Math.min(last, n)); render(ui, tr, k); if (!timer) ui.playB.textContent = k === last ? 'Replay' : 'Play'; };
   const stop = () => { clearTimeout(timer); timer = null; ui.playB.textContent = k === last ? 'Replay' : 'Play'; ui.cap.setAttribute('aria-live', 'polite'); };
   const dwell = () => (2200 + tr.steps[k].c.length * 22) / Number(ui.speed.value);
   const tick = () => {
@@ -265,11 +332,31 @@ async function init(section) {
       Home: () => { stop(); show(0); }, End: () => { stop(); show(last); }, ' ': toggle };
     if (map[e.key]) { e.preventDefault(); map[e.key](); }
   });
-  new ResizeObserver(() => sizeStage(ui, tr)).observe(ui.svg);
+  let measuredWidth = 0;
+  new ResizeObserver(() => {
+    sizeStage(ui, tr);
+    const width = ui.svg.getBoundingClientRect().width;
+    if (width === measuredWidth) return;
+    measuredWidth = width;
+    // Reserve the largest step at this width, including its legend and table.
+    const side = ui.cap.parentElement;
+    side.style.minHeight = ui.legend.style.minHeight = '0';
+    let sideHeight = 0, legendHeight = 0;
+    ui.cap.setAttribute('aria-live', 'off');
+    for (let i = 0; i <= last; i++) {
+      render(ui, tr, i);
+      sideHeight = Math.max(sideHeight, side.getBoundingClientRect().height);
+      legendHeight = Math.max(legendHeight, ui.legend.getBoundingClientRect().height);
+    }
+    side.style.minHeight = `${Math.ceil(sideHeight)}px`;
+    ui.legend.style.minHeight = `${Math.ceil(legendHeight)}px`;
+    show(k);
+    ui.cap.setAttribute('aria-live', timer ? 'off' : 'polite');
+  }).observe(ui.svg);
   sizeStage(ui, tr);
   show(0);
   stop();
-  // #a3-5 opens the third animation at its sixth step
+  // #a3-5 opens the third animation at its fifth step
   const m = /^#(a\d)-(\d+)$/.exec(location.hash);
   if (m && m[1] === section.id) { show(Number(m[2]) - 1); section.scrollIntoView(); }
   section.dataset.ready = '1';

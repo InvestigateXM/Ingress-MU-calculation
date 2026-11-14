@@ -402,16 +402,16 @@ def build_a1(calc):
             f"Its edges are great-circle arcs and do not follow the pixel grid.", {"c13": "hl"})
     tr.step("A level-13 cell contains 16 level-15 cells, 4 × 4.", {"@s15": "sub"})
     tr.step("The centres of the 16 level-15 cells are the sample points. The density of the cell is the mean of the "
-            "population counts at these 16 points, numbered here in enumeration order.", {"@d13": "dot", "@n13": "t"})
-    tr.step(f"To find the pixel of a sample point, the point is moved half a pixel to the north and to the west (open circles). "
+            "population counts at these 16 points. Focus or hover over a point for its sample number and count.", {"@d13": "dot"}, tb=["samples", 16, None])
+    tr.step(f"To find the pixel of a sample point, the point is moved half a pixel to the north and to the west (open circle for sample {demo + 1}). "
             f"The pixel that contains the moved point is the one that is read. Sample {demo + 1} lies in pixel "
             f"({pc}, {pr}), but its moved point lies in pixel ({gi13[demo]}, {gj13[demo]}), which is read. "
             f"{len(plain_diff)} of the 16 samples read a different pixel than the one containing them.",
-            {"@sh": "shift", "@sl": "link", f"px:{pc}:{pr}": "plain", f"px:{gi13[demo]}:{gj13[demo]}": "read"})
+            {"@d13": "", f"d13:{demo}": "dot", f"sh:{demo}": "shift", f"sl:{demo}": "link", f"px:{pc}:{pr}": "plain", f"px:{gi13[demo]}:{gj13[demo]}": "read"})
     s = {f"px:{k[0]}:{k[1]}": "read" for k in px13}
-    s.update({"@ln": "link", "@sh": "", "@sl": ""})
+    s = {"@px": "grid", **s, "@d13": "dot", "@sh": "", "@sl": ""}
     tr.step(f"The 16 samples read {len(px13)} different pixels. Several samples can read the same pixel.", s)
-    s = {f"pv:{k[0]}:{k[1]}": "t" for k in px13}
+    s = {"@d13": "", **{f"pv:{k[0]}:{k[1]}": "t" for k in px13}}
     tr.step("Excerpt of the population data: the count of each pixel that is read (rounded in the drawing, exact values "
             "in the table). The counts differ strongly between these pixels.",
             s, tb=["samples", 16, None])
@@ -426,13 +426,13 @@ def build_a1(calc):
     s.update({"@pv": ""})
     tr.step(f"The parent, cell {tok(c12)} at level 12 ({a12:.2f} km²), consists of four level-13 cells and contains 64 level-15 cells. "
             f"The same procedure with 64 sample points reads {len(px12)} pixels.", s)
-    s = {f"pv:{k[0]}:{k[1]}": "t" for k in px12}
+    s = {"@d12": "", **{f"pv:{k[0]}:{k[1]}": "t" for k in px12}}
     tr.step(f"Counts of the {len(px12)} pixels that are read by the 64 samples. Each sample counts once, so a pixel read by "
             f"several samples counts several times.", s, tb=["pixels", len(prow), None],
             eq=f"({' + '.join(f'{n12[k]}×{px12[k]:.3f}' for k in sorted(px12, key=lambda k: (k[1], k[0])))}) / 64 = {fmt(d12, 3)}")
     s = {"@pv": "", "@d12": "", "@kt": "t"}
     tr.step("Each of the four children averages 16 of the 64 samples. The mean of the four child densities is therefore "
-            f"the density of the parent: {fmt(d12, 3)}. The level-12 cell has a different density than the level-13 cell "
+            f"the density of the parent mathematically (floating-point summation can differ in the last bits): {fmt(d12, 3)}. The level-12 cell has a different density than the level-13 cell "
             f"{A1_CELL} ({fmt(d13, 3)}).", s, tb=["children", 5, None],
             eq=f"({' + '.join(fmt(d, 3) for _, d in kids)}) / 4 = {fmt(d12, 3)}")
     tr.step("The same holds at every level: a cell of level L averages the 4^(15−L) level-15 centres inside it. "
@@ -623,7 +623,7 @@ def build_a3(calc):
             {"@kt": "t"}, tb=["merge", 5, None],
             eq=f"({' + '.join(fmt(r[3], 3) for r in kid_rows)}) / 4 = {fmt(mean_kids, 3)} = density of {big['t']}")
     rel = abs(diff) / big["c"]
-    tr.step(f"Merging does not change the result for a cell that lies completely inside the field: the overlap of the parent is "
+    tr.step(f"For a cell completely inside the field, the overlap of the parent is "
             f"the sum of the overlaps of its children, and its density is their mean. The two contributions differ by {fmt(abs(diff), 4)} "
             f"({rel * 100:.3f} %) only because the four children are not exactly equal in area.",
             {}, tb=["merge", 5, None],
@@ -950,7 +950,7 @@ def build_a5(calc):
             tb=["cellsG", len(fG["cells"]), None])
     tr.step(f"{domG['t']} is again made of four final cells, of level {domG['lv'] + 1}: {n_budget(partsG)} kept whole by the budget and "
             f"{4 - n_budget(partsG)} inside G. Their mean is its density, {fmt(domG['d'], 1)}: the same value as in F, because it is the "
-            f"same cell. The level-{domG['lv']} cell averages an area a quarter as large as the level-{domF['lv']} cell in F.",
+            f"same cell. The level-{domG['lv']} cell averages an area roughly a quarter as large as the level-{domF['lv']} cell in F.",
             dict({"@G": "", "@qG": "t"}, **{f"pG:{tok(c)}": STATE_OF[w] for c, w, _ in partsG}), tb=["partsG", 4, None],
             eq=f"({' + '.join(fmt(dens[('G', p[0])], 1) for p in partsG)}) / 4 = {fmt(domG['d'], 1)}")
     tr.step(f"Same ground, different cell. F counts {domF['ov']:,.0f} km² of its area at the density of the level-{domF['lv']} cell, "
@@ -958,7 +958,7 @@ def build_a5(calc):
             f"G is part of F, but the density that applies to this ground is {domG['d'] / domF['d']:.1f} times as large.",
             {"@pG": "", "@qG": "", "fF": "field", "tF3": "t"}, tb=["cmp", 2, None],
             eq=f"F: {domF['ov']:,.0f} km² × {fmt(domF['d'], 1)} = {domF['c']:,.0f}     G: {domG['ov']:,.0f} km² × {fmt(domG['d'], 1)} = {domG['c']:,.0f}")
-    tr.step(f"Result: G earns {fG['mu']:,} MU and F earns {fF['mu']:,} MU. The covering depends on the size of the field, and with it "
+    tr.step(f"Result: G earns {fG['mu']:,} MU and F earns {fF['mu']:,} MU. The covering depends on the full geometry of the field, including its size, shape and position, and with it "
             f"the cells whose densities are averaged for a given piece of ground.", {}, tb=["totals", 2, None],
             eq=f"MU(G) = {fG['mu']:,}  >  MU(F) = {fF['mu']:,}")
     tr.extra["summary"] = [

@@ -38,7 +38,7 @@
   <li><a href="#a4">The budget of 20 cells</a></li>
   <li><a href="#a5">A smaller field with more MU</a></li>
 </ol>
-<noscript><p class="hint">The animations need JavaScript. The numbers of every example are in the <a href="method.html">Method</a> page and in the data files under <code>traces/</code>.</p></noscript>
+<noscript><p class="hint">The animations need JavaScript. The example data is available in <a href="traces/a1.json">animation 1</a>, <a href="traces/a2.json">animation 2</a>, <a href="traces/a3.json">animation 3</a>, <a href="traces/a4.json">animation 4</a> and <a href="traces/a5.json">animation 5</a>.</p></noscript>
 
 <section class="anim" id="a1" data-trace="traces/a1.json">
   <h2>1. From pixels to the density of a cell</h2>
@@ -48,19 +48,19 @@
 
 <section class="anim" id="a2" data-trace="traces/a2.json">
   <h2>2. A field inside one smallest cell</h2>
-  <p>A field that lies inside one level-13 cell has a covering of that single cell. Its MU is the area of the field times the density of the whole cell.</p>
+  <p>This field has a covering of one level-13 cell. Its contribution is the area of the field times the density of the whole cell; the regional minimum and final rounding then give its MU.</p>
   <div class="player"></div>
 </section>
 
 <section class="anim" id="a3" data-trace="traces/a3.json">
   <h2>3. A field that contains a combined cell</h2>
-  <p>Four cells of level 13 with the same parent are replaced by the parent when all four are final. For a cell inside the field this does not change the result. At the edge of the field it can.</p>
+  <p>A candidate whose four children are terminal becomes terminal itself; normalisation also merges four final siblings. A fully contained cell is already terminal and needs no split. Its density is the mean of its children's densities, but their contributions can differ slightly because their areas are unequal. At the field edge, unequal overlaps can make the difference much larger.</p>
   <div class="player"></div>
 </section>
 
 <section class="anim" id="a4" data-trace="traces/a4.json">
   <h2>4. The budget of 20 cells</h2>
-  <p>The covering splits a cell only while the number of cells stays within 20. When the budget is used up, the cells that are still waiting stay whole, however large they are compared with the field. Their density is the mean over the whole cell.</p>
+  <p>For a candidate at level 6 or finer with more than one intersecting child, splitting requires result + queue + children to fit within 20. A single intersecting child is always followed, and cells coarser than level 6 must split. Other candidates stay whole when the budget would be exceeded. Their density is the mean over the whole cell.</p>
   <div class="player"></div>
 </section>
 

@@ -93,7 +93,11 @@ def test_fields(name):
     tr = LOAD[name]
     for key in ("cells", "cells2"):
         if key in tr:
+            block = field_blocks(tr)[1 if key == "cells2" else 0]
+            expected = {c[0]: c for c in block["cells"]}
+            assert [r[0] for r in tr[key]["rows"]] == list(expected)
             for token, level, cell_km2, overlap, dens, contribution, region in tr[key]["rows"]:
+                assert [token, level, overlap, dens] == expected[token]
                 assert math.isclose(contribution, overlap * dens, rel_tol=1e-12)
                 assert s2sphere.CellId.from_token(token).level() == level
                 assert s2sphere.CellId.from_token(token).parent(6).to_token() == region
@@ -128,9 +132,16 @@ def test_a4_budget_trace():
     tr = LOAD["a4"]
     assert tr["check"]["start"]["budget"] == 20
     polls = [s for s in tr["steps"] if "bud" in s]
+    events = []
+    cover(tr["check"]["points_e6"], observer=lambda e, **k: events.append((e, k)))
+    actual = [k for e, k in events if e == "poll"]
+    assert len(polls) == len(actual)
     assert len(polls) == tr["check"]["start"]["polls"]
-    for s in polls:
+    for s, event in zip(polls, actual):
         b = s["bud"]
+        assert token_id(s["c"].split("cell ", 1)[1].split(",", 1)[0]) == event["cid"]
+        assert (b["r"], b["q"], b["k"], b["go"]) == (
+            event["result"], event["queue"], len(event["children"]), event["expand"])
         assert b["max"] == 20
         # a cell is split exactly when the three counts fit the budget (or has a single child)
         assert b["go"] == (b["k"] == 1 or b["r"] + b["q"] + b["k"] <= 20)
