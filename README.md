@@ -143,7 +143,9 @@ One calculation worker owns an in-process per-mosaic density cache. Deadlines in
 
 ## Website
 
-`site/` contains the static calculator and method pages published at `https://mu.investigatexm.com` through GitHub Pages. `python site/build.py` (requires `pip install markdown`) renders `docs/METHOD.md` into `site/_site/`. For local testing, serve that directory and open it with `?api=http://localhost:8000`.
+`site/` contains the static calculator, method and "How it works" pages published at `https://mu.investigatexm.com` through GitHub Pages. `python site/build.py` (requires `pip install markdown`) renders `docs/METHOD.md` into `site/_site/`. For local testing, serve that directory and open it with `?api=http://localhost:8000`.
+
+The "How it works" page (`site/how-it-works.html`, `site/how-it-works.js`) shows five step-by-step animations on fixed example fields. Everything they show is computed by the calculator and committed as data files in `site/traces/`; the page makes no API calls. Regenerate the files after a change of the covering or calculation rules with `GRUMP_DIR=/path/to/bil python tools/export_traces.py` (Linux, needs the population rasters; `--check` compares with the committed files instead of writing). The export stops if an example no longer gives its expected MU. `tests/test_traces.py` checks the committed files without population data. The first animation contains a small excerpt of the population data (13 pixel values) with attribution; no other raster values are published.
 
 ## Tests
 

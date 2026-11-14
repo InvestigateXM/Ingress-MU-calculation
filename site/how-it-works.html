@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How it works - Ingress MU calculator</title>
+<meta name="description" content="Step-by-step animations of how cell densities, coverings and the 20-cell budget determine the Mind Units of an Ingress control field.">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="wide">
+<header>
+  <span class="site">Ingress MU calculator</span>
+  <a href="./">Calculator</a>
+  <a href="how-it-works.html" aria-current="page">How it works</a>
+  <a href="method.html">Method</a>
+  <a href="https://github.com/InvestigateXM/Ingress-MU-calculation">GitHub</a>
+</header>
+<svg class="hatch-defs" aria-hidden="true" focusable="false">
+  <defs>
+    <pattern id="hatch-merged" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect class="hb merged" width="6" height="6"/><line class="hl merged" x1="0" y1="0" x2="0" y2="6" stroke-width="1.6"/>
+    </pattern>
+    <pattern id="hatch-kept" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect class="hb kept" width="6" height="6"/><line class="hl kept" x1="0" y1="0" x2="0" y2="6" stroke-width="1.6"/><line class="hl kept" x1="0" y1="0" x2="6" y2="0" stroke-width="1.6"/>
+    </pattern>
+  </defs>
+</svg>
+<main>
+<h1>How cells and densities decide the Mind Units</h1>
+<p>The <a href="method.html">Method</a> page defines how the Mind Units (MU) of a field are calculated. This page shows its main ideas on five fixed example fields. Every number is computed by the calculator of this project and stored with the page; nothing here is calculated in the browser or requested from the API. The coordinates are example coordinates, not necessarily portals.</p>
+<p>Each animation is a series of steps. Use <strong>Play</strong>, <strong>Previous</strong> and <strong>Next</strong>, or the slider. When the drawing has keyboard focus, the left and right arrow keys change the step, Home and End jump to the first and last step, and the space bar starts and stops. Under each animation the numbers of the example are listed.</p>
+<p class="hint">The first animation shows a small excerpt of the population data (13 pixel values, the pixels read by the sample points of the two cells shown). Everywhere else only values derived from it are shown: densities of cells, overlap areas and contributions. All example fields are smaller than 10,000 km², in the size range for which the method is well established. Results for very large fields (from a few hundred thousand km²) are likely but not confirmed to be correct in every case.</p>
+<ol class="toc">
+  <li><a href="#a1">From pixels to the density of a cell</a></li>
+  <li><a href="#a2">A field inside one smallest cell</a></li>
+  <li><a href="#a3">A field that contains a combined cell</a></li>
+  <li><a href="#a4">The budget of 20 cells</a></li>
+  <li><a href="#a5">A smaller field with more MU</a></li>
+</ol>
+<noscript><p class="hint">The animations need JavaScript. The numbers of every example are in the <a href="method.html">Method</a> page and in the data files under <code>traces/</code>.</p></noscript>
+
+<section class="anim" id="a1" data-trace="traces/a1.json">
+  <h2>1. From pixels to the density of a cell</h2>
+  <p>The population data is a grid of 30 arc-second pixels. The smallest cells that the covering uses, cells of level 13, do not follow this grid. The density of such a cell is the mean of 16 values read from the grid, one per sample point. A cell of level 12 does the same with 64 values.</p>
+  <div class="player"></div>
+</section>
+
+<section class="anim" id="a2" data-trace="traces/a2.json">
+  <h2>2. A field inside one smallest cell</h2>
+  <p>A field that lies inside one level-13 cell has a covering of that single cell. Its MU is the area of the field times the density of the whole cell.</p>
+  <div class="player"></div>
+</section>
+
+<section class="anim" id="a3" data-trace="traces/a3.json">
+  <h2>3. A field that contains a combined cell</h2>
+  <p>Four cells of level 13 with the same parent are replaced by the parent when all four are final. For a cell inside the field this does not change the result. At the edge of the field it can.</p>
+  <div class="player"></div>
+</section>
+
+<section class="anim" id="a4" data-trace="traces/a4.json">
+  <h2>4. The budget of 20 cells</h2>
+  <p>The covering splits a cell only while the number of cells stays within 20. When the budget is used up, the cells that are still waiting stay whole, however large they are compared with the field. Their density is the mean over the whole cell.</p>
+  <div class="player"></div>
+</section>
+
+<section class="anim" id="a5" data-trace="traces/a5.json">
+  <h2>5. A smaller field with more MU</h2>
+  <p>The covering depends on the field. A field G that lies completely inside a field F can earn more MU than F, because the two coverings average different cells.</p>
+  <div class="player"></div>
+</section>
+</main>
+<footer>
+  Independent reconstruction; not affiliated with or endorsed by Niantic. Population data: Global Rural-Urban Mapping Project, Version 1 (GRUMP v1), CIESIN / NASA SEDAC. Source and API description: <a href="https://github.com/InvestigateXM/Ingress-MU-calculation">GitHub</a>.
+</footer>
+<script type="module" src="how-it-works.js"></script>
+</body>
+</html>

@@ -11,7 +11,7 @@ import markdown
 
 SITE = Path(__file__).resolve().parent
 OUT = SITE / "_site"
-STATIC = ["index.html", "style.css", "CNAME"]
+STATIC = ["index.html", "how-it-works.html", "how-it-works.js", "style.css", "CNAME"]
 
 TEMPLATE = """<!doctype html>
 <html lang="en">
@@ -25,6 +25,7 @@ TEMPLATE = """<!doctype html>
 <header>
   <span class="site">Ingress MU calculator</span>
   <a href="./">Calculator</a>
+  <a href="how-it-works.html">How it works</a>
   <a href="method.html" aria-current="page">Method</a>
   <a href="https://github.com/InvestigateXM/Ingress-MU-calculation">GitHub</a>
 </header>
@@ -58,6 +59,7 @@ def main():
     (OUT / "method.html").write_text(TEMPLATE.replace("{body}", html), encoding="utf-8")
     for name in STATIC:
         shutil.copy(SITE / name, OUT / name)
+    shutil.copytree(SITE / "traces", OUT / "traces")
     print(f"built {OUT} from {source}")
 
 

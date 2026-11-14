@@ -2,12 +2,18 @@
   --bg: #fff; --fg: #1a1a1a; --muted: #5c6370; --line: #d5d9de;
   --code-bg: #f3f5f7; --link: #0b5cad; --accent: #0b5cad; --on-accent: #fff;
   --err-bg: #fdecec; --err: #9b1c1c;
+  --stage: #f7f9fb; --grid: #c3cad2; --c-field: #0072b2; --c-field2: #c24f00; --c-poll: #c24f00; --c-in: #008a64;
+  --c-edge: #0072b2; --c-merged: #b57600; --c-kept: #a84a82;
+  --h0: #eef3f8; --h1: #dce8f3; --h2: #c6daed; --h3: #a9c9e4; --h4: #86b1d6; --h5: #6597c7; --h6: #4a7fb6; --h7: #336a9f; --h8: #215585; --h9: #123f69;
 }
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #14171a; --fg: #e4e6e8; --muted: #9aa3ad; --line: #2e343a;
     --code-bg: #1d2227; --link: #6cb2f5; --accent: #6cb2f5; --on-accent: #0d1114;
     --err-bg: #3a1c1c; --err: #f5a3a3;
+    --stage: #1a1f24; --grid: #3a424a; --c-field: #56b4e9; --c-field2: #f08a4b; --c-poll: #f08a4b; --c-in: #2bd4a4;
+    --c-edge: #56b4e9; --c-merged: #f5c04a; --c-kept: #e79bc6;
+    --h0: #1f2c3a; --h1: #26394d; --h2: #2d4a63; --h3: #355b7a; --h4: #3f6d92; --h5: #4d81aa; --h6: #6196c0; --h7: #7cacd2; --h8: #9cc3e2; --h9: #c2dcf1;
   }
 }
 * { box-sizing: border-box; }
@@ -61,3 +67,101 @@ button[disabled] { opacity: .6; cursor: wait; }
 details { margin-top: 16px; }
 summary { cursor: pointer; font-weight: 600; }
 [hidden] { display: none !important; }
+/* how-it-works.html: animation players. Colours follow the Okabe-Ito set; every state also has a
+   second channel (line style or pattern) so that it does not depend on colour alone. */
+body.wide header, body.wide main, body.wide footer { max-width: 62rem; }
+.anim { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.anim h2 { margin-top: .5rem; }
+.player { margin-top: 12px; }
+.stage-wrap { position: relative; background: var(--stage); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.stage-wrap:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.stage { display: block; width: 100%; height: auto; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 8px 10px; border-top: 1px solid var(--line); font-size: .8125rem; color: var(--muted); min-height: 2.4rem; }
+.lg { display: inline-flex; align-items: center; gap: 6px; }
+.lg.ramp { gap: 0; }
+.sw { width: 22px; height: 14px; flex: none; }
+.sw.r { width: 8px; }
+.ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.ctl input[type=range] { flex: 1 1 8rem; min-width: 6rem; accent-color: var(--accent); }
+.ctl .count { font-variant-numeric: tabular-nums; color: var(--muted); font-size: .875rem; white-space: nowrap; }
+.ctl button { min-height: 40px; min-width: 40px; padding: 6px 14px; }
+button.sec { background: var(--bg); color: var(--accent); border: 1px solid var(--accent); }
+button[disabled].sec { opacity: .45; cursor: default; }
+select { font: inherit; padding: 6px 8px; color: inherit; background: var(--bg); border: 1px solid var(--muted); border-radius: 4px; min-height: 40px; }
+select:focus-visible, input[type=range]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.side { margin-top: 12px; }
+.cap { margin: 0 0 8px; font-size: 1.0625rem; min-height: 3.2em; }
+.eq { margin: 0 0 8px; padding: 8px 10px; background: var(--code-bg); border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .8125rem; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.tb table, table.sum { font-size: .875rem; margin: .5rem 0; }
+.tb tr.hl td { background: var(--code-bg); font-weight: 600; }
+table.sum th { font-weight: 600; background: none; white-space: nowrap; }
+.bud .bt { margin: 0 0 4px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.bud .hint { margin: 4px 0 0; }
+.slots { display: flex; flex-wrap: wrap; gap: 3px; }
+.slot { width: 16px; height: 16px; border: 2px solid var(--c-kept); border-radius: 3px; box-sizing: border-box; }
+.slot.res { background: var(--c-kept); }
+.slot.que { background: none; border-style: solid; }
+.slot.kid { background: none; border-style: dotted; }
+.slot.over { border-color: var(--c-poll); }
+.slot.over.res, .slot.over.que, .slot.over.kid { border-color: var(--c-poll); }
+.slot.edge { margin-left: 8px; }
+@media (min-width: 52rem) {
+  .player { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); grid-template-areas: "stage side" "ctl side"; gap: 0 20px; align-items: start; }
+  .player > .stage-wrap { grid-area: stage; }
+  .player > .ctl { grid-area: ctl; }
+  .player > .side { grid-area: side; margin-top: 0; }
+  .player > h3, .player > table, .player > details, .player > p { grid-column: 1 / -1; }
+}
+
+/* drawing */
+.stage { --u: 1; }
+.e { fill: none; stroke: none; transition: opacity .3s ease, fill .3s ease, stroke .3s ease, fill-opacity .3s ease, stroke-width .3s ease; }
+.e[data-s=""] { opacity: 0; }
+.stage text, .sb text { font-size: calc(var(--u) * 12px); fill: var(--fg); stroke: var(--stage); stroke-width: calc(var(--u) * 3px); paint-order: stroke; stroke-linejoin: round; text-anchor: middle; font-variant-numeric: tabular-nums; }
+.e.k-t { pointer-events: none; }
+.e.k-t[data-s=""] { opacity: 0; }
+.sb line { stroke: var(--fg); stroke-width: 3px; }
+.sb text { font-size: calc(var(--u) * 11px); }
+.k-p[data-s=field] { stroke: var(--c-field); stroke-width: 2.5px; fill: var(--c-field); fill-opacity: .1; }
+.k-p[data-s=field2] { stroke: var(--c-field2); stroke-width: 2.5px; stroke-dasharray: 8 4; fill: var(--c-field2); fill-opacity: .1; }
+.k-p[data-s=cap] { stroke: var(--muted); stroke-width: 1.2px; stroke-dasharray: 2 4; }
+.k-p[data-s=cell] { stroke: var(--muted); stroke-width: 1.2px; }
+.k-p[data-s=cell12] { stroke: var(--fg); stroke-width: 2.5px; }
+.k-p[data-s=hl] { stroke: var(--c-field2); stroke-width: 2.5px; fill: var(--c-field2); fill-opacity: .12; }
+.k-p[data-s=sub] { stroke: var(--muted); stroke-width: .8px; stroke-dasharray: 3 3; }
+.k-p[data-s=grid] { stroke: var(--grid); stroke-width: 1px; }
+.k-p[data-s=read] { stroke: var(--c-merged); stroke-width: 2px; fill: var(--c-merged); fill-opacity: .2; }
+.k-p[data-s=plain] { stroke: var(--c-poll); stroke-width: 2.2px; stroke-dasharray: 5 3; }
+.k-p[data-s=wait] { stroke: var(--fg); stroke-width: 1.4px; stroke-dasharray: 5 3; fill: var(--muted); fill-opacity: .16; }
+.k-p[data-s=poll] { stroke: var(--c-poll); stroke-width: 3px; fill: var(--c-poll); fill-opacity: .18; }
+.k-p[data-s=done] { stroke: var(--muted); stroke-width: .8px; }
+.k-p[data-s=miss] { stroke: var(--grid); stroke-width: .8px; stroke-dasharray: 1 4; }
+.k-p[data-s=in] { stroke: var(--c-in); stroke-width: 1.8px; fill: var(--c-in); fill-opacity: .3; }
+.k-p[data-s=edge] { stroke: var(--c-edge); stroke-width: 2px; }
+.k-p[data-s=merged] { stroke: var(--c-merged); stroke-width: 2px; fill: var(--fill-merged, url(#hatch-merged)); }
+.k-p[data-s=kept] { stroke: var(--c-kept); stroke-width: 2.2px; fill: var(--fill-kept, url(#hatch-kept)); }
+.k-p[data-s=clip] { stroke: none; fill: var(--c-field); fill-opacity: .38; }
+.k-p[data-s=heat] { stroke: var(--bg); stroke-width: 1px; fill: var(--hv, var(--h5)); fill-opacity: 1; }
+.k-d[data-s=dot] { fill: var(--fg); stroke: var(--stage); stroke-width: 1px; }
+.k-d[data-s=in] { fill: var(--c-in); stroke: var(--fg); stroke-width: 1.2px; }
+.k-d[data-s=out] { fill: var(--stage); stroke: var(--fg); stroke-width: 1.6px; }
+.k-d[data-s=shift] { fill: var(--stage); stroke: var(--c-field); stroke-width: 2px; }
+.k-l[data-s=link] { stroke: var(--c-field); stroke-width: 1.4px; }
+.k-t[data-s=t] { fill: var(--fg); }
+.e[data-d="0"] { --hv: var(--h0); }
+.e[data-d="1"] { --hv: var(--h1); }
+.e[data-d="2"] { --hv: var(--h2); }
+.e[data-d="3"] { --hv: var(--h3); }
+.e[data-d="4"] { --hv: var(--h4); }
+.e[data-d="5"] { --hv: var(--h5); }
+.e[data-d="6"] { --hv: var(--h6); }
+.e[data-d="7"] { --hv: var(--h7); }
+.e[data-d="8"] { --hv: var(--h8); }
+.e[data-d="9"] { --hv: var(--h9); }
+.sw .e { transition: none; }
+@media (prefers-reduced-motion: reduce) { .e { transition: none; } }
+.hb.merged { fill: var(--c-merged); fill-opacity: .12; }
+.hb.kept { fill: var(--c-kept); fill-opacity: .12; }
+.hl.merged { stroke: var(--c-merged); stroke-opacity: .75; }
+.hl.kept { stroke: var(--c-kept); stroke-opacity: .75; }
+.hatch-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
