@@ -17,7 +17,7 @@ class Grump:
     def __init__(self, folder=None):
         folder = folder or os.environ.get("GRUMP_DIR", "/data/grump/bil")
         self.folder = folder
-        self.density_table = None
+        self.density_table = {}
         self.r = []
         self.density_cache = {}
         for h in sorted(glob.glob(os.path.join(folder, "*up00ag.hdr"))):
@@ -92,9 +92,13 @@ def l15_centres(cell_id, level=15):
 
 def density(g, cell_id, level=15):
     """Mean raw count at descendant centers, cached separately for each mosaic."""
-    if level == 15 and s2sphere.CellId(cell_id).level() == 6 and g.density_table is not None:
+    cell_level = s2sphere.CellId(cell_id).level()
+    if level == 15 and cell_level in g.density_table:
         from .tables import lookup
-        return lookup(g.density_table, cell_id)
+        value = lookup(g.density_table[cell_level], cell_id)
+        if np.isfinite(value):
+            return value
+        del g.density_table[cell_level]
     k = (cell_id, level)
     if k not in g.density_cache:
         if len(g.density_cache) >= CACHE_LIMIT:

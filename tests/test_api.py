@@ -26,6 +26,8 @@ def client(monkeypatch):
 
 def test_shapes(client):
     assert client.get("/health").json()["ok"]
+    assert client.get("/health").json()["table_max_level"] == 6
+    assert client.get("/").json()["table_max_level"] == 6
     assert client.get("/getMU", params=[("c", "1,1")] * 3).json()["mu"] == 3046
     assert "raw_mu" not in client.post("/getMU", json={"coordinates": []}).json()
     assert "raw_mu" in client.post("/getMU?detail=1", json={"coordinates": []}).json()
@@ -102,3 +104,13 @@ def test_unexpected_error_is_generic_and_has_cors(client, monkeypatch):
     assert response.json()["error"] == "Calculation failed."
     assert "secret" not in response.text
     assert response.headers["access-control-allow-origin"] == "*"
+
+
+def test_preparation_failure_prevents_startup(monkeypatch):
+    monkeypatch.setattr(api, 'Grump', lambda: SimpleNamespace(r=[1], folder='unused'))
+    def failed(folder):
+        raise RuntimeError('table preparation failed')
+    monkeypatch.setattr(api, 'ensure_tables', failed)
+    with pytest.raises(RuntimeError, match='table preparation failed'):
+        with TestClient(api.app):
+            pytest.fail('API served before preparation')

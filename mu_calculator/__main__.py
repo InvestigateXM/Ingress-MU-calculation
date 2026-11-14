@@ -12,6 +12,8 @@ def main():
         raise SystemExit(
             "Usage: python -m mu_calculator [serve|calc p1 p2 p3|download|build-tables]"
         )
+    from .tables import max_level
+    max_level()  # Validate before downloads or any preparation.
     folder = os.environ.get("GRUMP_DATA", "/data/grump")
     ensure_data(folder)
     os.environ.setdefault("GRUMP_DIR", os.path.join(folder, "bil"))

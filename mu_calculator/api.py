@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException
 from . import Grump, MODEL
 from .coordinates import calculate
-from .tables import ensure_tables
+from .tables import ensure_tables, max_level
 
 BODY_LIMIT = int(os.environ.get("MU_BODY_LIMIT", 32768))
 BULK_LIMIT = int(os.environ.get("MU_BULK_LIMIT", 50))
@@ -25,6 +25,7 @@ executor = ThreadPoolExecutor(max_workers=1)
 
 @asynccontextmanager
 async def lifespan(app):
+    app.state.table_max_level = max_level()
     app.state.grump = Grump()
     app.state.grump.density_table = await asyncio.to_thread(
         ensure_tables, app.state.grump.folder
@@ -144,13 +145,16 @@ def root():
         "description": "Independent empirical Ingress MU calculator.",
         "docs": "https://mu.investigatexm.com",
         "api_docs": "/docs",
+        "table_max_level": app.state.table_max_level,
         "model": MODEL,
     }
 
 
 @app.get("/health")
 def health():
-    return {"ok": True, "rasters": len(app.state.grump.r), "model": MODEL}
+    return {"ok": True, "rasters": len(app.state.grump.r), "model": MODEL,
+            "table_max_level": app.state.table_max_level,
+            "table_levels_ready": sorted(app.state.grump.density_table)}
 
 
 @app.api_route("/getMU", methods=["GET", "POST"])

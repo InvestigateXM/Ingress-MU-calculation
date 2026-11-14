@@ -20,7 +20,7 @@ Create a free [NASA Earthdata account](https://urs.earthdata.nasa.gov/) and appr
 docker compose run --rm mu calc "52.324297,10.182664" "52.244048,10.167482" "52.295984,10.231064"
 ```
 
-Expected MU: **3046**. Startup builds a global level-6 density table and checks this triangle before accepting requests. The listener (including `/health`) is unavailable until these steps finish. See [HTTPS deployment](deploy/README.md).
+Expected MU: **3046**. Startup prepares the configured density tables and checks this triangle before accepting requests. The listener (including `/health`) is unavailable until these steps finish. See [HTTPS deployment](deploy/README.md).
 
 For development, use Linux Python 3.12 and `pip install -e .`. Set `GRUMP_DATA` to a directory containing `bil/`, then run `python -m mu_calculator serve`. Missing files are downloaded. Credentials come only from environment variables; Compose reads `.env`. `GRUMP_DIR` overrides the calculator's extracted-raster location, while startup checks completeness under `GRUMP_DATA`.
 
@@ -112,15 +112,30 @@ Order is preserved; `id` is echoed only when supplied. Successful items include 
 | Rate limiting | Enforce at reverse proxy/edge; return 429 with Retry-After |
 
 Errors: `{"error":"message","model":"grump2000-s2java2011-min6-l6min1"}`.
-Limits are configurable with `MU_BODY_LIMIT`, `MU_BULK_LIMIT` and `MU_TIME_BUDGET`. Level-6 densities are read from a memory-mapped table; finer covering cells are sampled on demand with a per-mosaic cache flushed at 100,000 entries. Detail includes every covering cell and region, without truncation; enormous fields can produce several MB of JSON.
+Limits are configurable with `MU_BODY_LIMIT`, `MU_BULK_LIMIT` and `MU_TIME_BUDGET`. Configured precomputed densities are read from memory-mapped tables; other covering cells are sampled on demand with a per-mosaic cache flushed at 100,000 entries. Detail includes every covering cell and region, without truncation; enormous fields can produce several MB of JSON.
 
 The minimum level takes precedence over the soft 20-cell covering budget. Cells below level 6 must be expanded even when the budget is exceeded; mandatory single-child refinement may continue beyond level 6.
 
 ### Density table lifecycle
 
-After download, `serve`, `calc` and `build-tables` automatically build a missing or stale table beside `bil/`. Run `python -m mu_calculator build-tables` to prepare it explicitly. Allow roughly 8 to 10 minutes for table preparation on a six-worker desktop, plus download time; slower machines can take substantially longer. The global level-6 table has 24,576 float64 values (196,736 bytes including its NumPy header), plus a small JSON manifest and lock file. Allow additional space for one temporary table during rebuild; obsolete fingerprinted tables can be removed when no process uses them. No derived data are shipped in the repository or image.
+After download, `serve`, `calc` and `build-tables` prepare missing or stale tables beside `bil/`. Run `python -m mu_calculator build-tables` to prepare them explicitly. No derived data are shipped in the repository or image.
 
-Each value independently samples its cell's level-15 centers in contiguous IJ order and applies the NumPy float64 mean. Parent values are never reconstructed from child means. A SHA-256 fingerprint covers ordered raster names and contents, sampling/reduction code and table version. Raster hashing runs at startup. Builders hold an OS lock, use bounded chunks and publish the finished table and manifest by atomic rename. Interrupted builds restart; an incomplete or stale table is never served. `MU_TABLE_WORKERS` controls build parallelism (default up to six CPU cores); request serving uses one worker.
+`MU_TABLE_MAX_LEVEL` selects the highest precomputed S2 density level: an integer from 6 to 11, default 6. Levels 6 through the selected level are prepared before serving; other levels are sampled on demand with the existing bounded cache. Invalid values fail at startup. Level 6 is sufficient for correctness; this option changes preparation, disk use and cold request speed, not calculation results.
+
+| Maximum level | Cumulative table size | What it speeds up |
+|---:|---:|---|
+| 6 | 0.19 MiB | Large fields with level-6 covering cells |
+| 7 | 0.94 MiB | Roughly 300 km fields |
+| 8 | 3.94 MiB | Medium fields with level-8 covering cells |
+| 9 | 15.94 MiB | Roughly 100 km fields; optional speed/space choice |
+| 10 | 63.94 MiB | Avoids remaining level-10 sampling |
+| 11 | 255.94 MiB | Avoids remaining level-11 sampling |
+
+Sizes exclude small NumPy headers and manifests. In warm-raster measurements, levels 10-11 add disk without a measurable benefit for the measured 100-300 km fields. Fresh-process performance can differ, especially when avoiding raster page faults; other field sizes and covering shapes may also behave differently. Warm requests already benefit from the density cache.
+
+Raising the setting builds only missing levels in one shared sampling pass. Lowering it leaves higher tables on disk but ignores them. Recreate the container after changing `.env` (`docker compose up -d --force-recreate`). Allow roughly 8 to 10 minutes for level 6 on a six-worker desktop, and more for higher levels or slower machines. At level 11 allow about 268 MB for tables plus another 268 MB during replacement; budget at least 5 GB for the population volume including rasters, archives and slack. Obsolete fingerprinted generations consume additional space and can be removed when no process uses them.
+
+Each value uses its cell's level-15 samples in contiguous IJ order and the same NumPy float64 mean. A shared pass repacks raw samples into independent contiguous vectors; parent values are never reconstructed from child means. A SHA-256 fingerprint covers ordered raster names and contents, an explicit sampling/table semantics version and numerical dependency versions. Changes to sampling semantics require updating that version; comments and docstrings do not invalidate tables. The first upgrade to this fingerprint rebuilds legacy level-6 tables once. Every manifest validates the level, layout version, shape, dtype, file size and content checksum. Raster hashing runs once at startup. Builders hold an OS lock, bound pending work, checkpoint verified parent tiles and publish each completed table and manifest by atomic rename. Interrupted builds resume from verified checkpoints; incomplete or stale tables are never served. `MU_TABLE_WORKERS` controls build parallelism (default up to six CPU cores); reduce it on small-memory hosts. Table validation can make about 256 MiB resident at level 11, in addition to raster pages and worker allocations. Request serving uses one worker.
 
 One calculation worker owns an in-process per-mosaic density cache. Deadlines include queue time. A running calculation may finish after its HTTP deadline; expired queued calculations are discarded before they start.
 
