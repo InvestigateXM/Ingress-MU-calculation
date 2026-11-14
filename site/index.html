@@ -18,9 +18,9 @@
 </header>
 <main>
 <h1>Mind Units for a control field</h1>
-<p>Enter the three portal coordinates as <code>latitude, longitude</code> in decimal degrees. Three coordinates, one per line, can be pasted into the first field.</p>
-<p class="hint">Results for very large fields (from a few hundred thousand km²) are likely but not confirmed to be correct in every case.</p>
-<p class="hint">The same calculation is available as a public API; see <a href="api.html">API</a> for endpoints and examples.</p>
+<p>Enter the three portal coordinates as <code>latitude, longitude</code> in decimal degrees. You can also paste all three coordinates into the first fields as long as they were copied from different lines.</p>
+<p class="hint">Results for very large fields (from a few hundred thousand km²) are likely but not 100% confirmed to be correct in every case. Let me know on GitHub if you are running into a divergence!</p>
+<p class="hint">The same calculation is available as a public API. See <a href="api.html">API</a> for endpoints and examples.</p>
 <form id="form" novalidate>
   <label for="p1">Portal 1</label>
   <input type="text" id="p1" placeholder="52.324297, 10.182664" autocomplete="off" spellcheck="false">
@@ -50,7 +50,7 @@
 </section>
 </main>
 <footer>
-  Independent reconstruction; not affiliated with or endorsed by Niantic. Population data: Global Rural-Urban Mapping Project, Version 1 (GRUMP v1), CIESIN / NASA SEDAC. Source and API description: <a href="https://github.com/InvestigateXM/Ingress-MU-calculation">GitHub</a>.
+  Independent reconstruction; not affiliated with or endorsed by Niantic Spatial or the Ingress team. Population data: Global Rural-Urban Mapping Project, Version 1 (GRUMP v1), CIESIN / NASA SEDAC. Source and API description: <a href="https://github.com/InvestigateXM/Ingress-MU-calculation">GitHub</a>.
 </footer>
 <script>
 const API_BASE = 'https://api.investigatexm.com';
