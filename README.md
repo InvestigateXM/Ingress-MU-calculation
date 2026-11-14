@@ -1,6 +1,6 @@
 # Ingress MU Calculator
 
-Calculate Mind Units from three portal coordinates. This is an independent empirical reconstruction, not affiliated with or endorsed by Niantic.
+Calculate Mind Units from three portal coordinates. This is an independent empirical reconstruction, not affiliated with or endorsed by Niantic. Results for very large fields (roughly a million km² and more) are likely but not confirmed to be correct in every case.
 
 The model uses GRUMP v1 year-2000 UN-adjusted counts, historical 2011 S2 covering with minimum level 6, spherical overlap areas and a minimum of one MU per level-6 region. See [the method](docs/METHOD.md).
 
