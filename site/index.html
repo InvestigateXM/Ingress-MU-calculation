@@ -17,6 +17,7 @@
 <main>
 <h1>Mind Units for a control field</h1>
 <p>Enter the three portal coordinates as <code>latitude, longitude</code> in decimal degrees. Three coordinates, one per line, can be pasted into the first field.</p>
+<p class="hint">Results for very large fields (from a few hundred thousand km²) are likely but not confirmed to be correct in every case.</p>
 <form id="form" novalidate>
   <label for="p1">Portal 1</label>
   <input type="text" id="p1" placeholder="52.324297, 10.182664" autocomplete="off" spellcheck="false">
@@ -38,8 +39,10 @@
     <p class="hint">Raw MU before regional minimums: <span id="raw"></span>. Total after minimums, before rounding: <span id="total"></span>. See <a href="method.html">Method</a> for how these are derived.</p>
     <h2>Regions (S2 level 6)</h2>
     <table id="regions"></table>
+    <p class="hint" id="regions-note" hidden></p>
     <h2>Cells</h2>
     <table id="cells"></table>
+    <p class="hint" id="cells-note" hidden></p>
   </details>
 </section>
 </main>
@@ -83,7 +86,13 @@ $('example').addEventListener('click', e => {
   fields.forEach((f, i) => { f.value = EXAMPLE[i]; });
 });
 
+const ROW_LIMIT = 1000;
+
 function fill(el, head, rows, numeric) {
+  const note = $(el.id + '-note');
+  note.hidden = rows.length <= ROW_LIMIT;
+  note.textContent = 'Showing the first ' + n(ROW_LIMIT, 0) + ' of ' + n(rows.length, 0) + ' rows. The API returns all of them with detail=1.';
+  rows = rows.slice(0, ROW_LIMIT);
   el.replaceChildren();
   const add = (tag, cells, section) => {
     const tr = section.insertRow();

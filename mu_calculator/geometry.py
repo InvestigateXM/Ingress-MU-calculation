@@ -33,7 +33,7 @@ class Grump:
             self.r.append((iso, gi0, gj0, a))
 
     def pix(self, lat, lng):
-        """global pixel indices for samples (half-pixel offset as reconstructed)"""
+        """Global pixel indices for samples (half-pixel offset; see docs/METHOD.md)."""
         return (
             np.floor((lng - D / 2 + 180) / D).astype(np.int64),
             np.floor((90 - (lat + D / 2)) / D).astype(np.int64),
@@ -98,7 +98,7 @@ def density(g, cell_id, level=15):
     k = (cell_id, level)
     if k not in g.density_cache:
         if len(g.density_cache) >= CACHE_LIMIT:
-            g.density_cache.clear()  # ponytail: full flush; use an LRU if hit rate matters
+            g.density_cache.clear()  # Full flush keeps the cache bounded.
         lat, lng = l15_centres(cell_id, level)
         g.density_cache[k] = float(g.sample(lat, lng).mean())
     return g.density_cache[k]

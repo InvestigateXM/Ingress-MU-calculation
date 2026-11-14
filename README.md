@@ -1,6 +1,6 @@
 # Ingress MU Calculator
 
-Calculate Mind Units from three portal coordinates. This is an independent empirical reconstruction, not affiliated with or endorsed by Niantic. Results for very large fields (roughly a million km² and more) are likely but not confirmed to be correct in every case.
+Calculate Mind Units from three portal coordinates. This is an independent empirical reconstruction, not affiliated with or endorsed by Niantic. Results for very large fields (from a few hundred thousand km²) are likely but not confirmed to be correct in every case.
 
 The model uses GRUMP v1 year-2000 UN-adjusted counts, historical 2011 S2 covering with minimum level 6, spherical overlap areas and a minimum of one MU per level-6 region. See [the method](docs/METHOD.md).
 
@@ -14,7 +14,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Create a free [NASA Earthdata account](https://urs.earthdata.nasa.gov/) and approve the SEDAC application under Applications > Authorized Apps. First startup downloads 232 country archives and extracts 234 raster pairs into the named `population` volume. Allow several GB for archives and about 3.2 GB for extracted files. The repository and image contain no population rasters or derived density tables. Completed archives and extracted files are reused; interrupted archives restart. Extraction checks ZIP CRCs; every startup checks required file sizes. The container runs as non-root and publishes localhost port 8000.
+Create a free [NASA Earthdata account](https://urs.earthdata.nasa.gov/) and approve the SEDAC application under Applications > Authorized Apps. First startup downloads 232 country archives and extracts 234 raster pairs into the named `population` volume. The archives take about 260 MB and the extracted files about 3.2 GB. The repository and image contain no population rasters or derived density tables. Completed archives and extracted files are reused; interrupted archives restart. Extraction checks ZIP CRCs; every startup checks required file sizes. The container runs as non-root and publishes localhost port 8000.
 
 ```sh
 docker compose run --rm mu calc "52.324297,10.182664" "52.244048,10.167482" "52.295984,10.231064"
@@ -104,7 +104,7 @@ Order is preserved; `id` is echoed only when supplied. Successful items include 
 | `GET /docs` | Generated interactive API documentation |
 | Request body | 32,768 bytes; 413 above this, including streamed bodies |
 | Bulk | 1–50 fields; otherwise 400 |
-| Field size | No size or density-sample cap; all valid spherical triangles are supported |
+| Field size | No size cap; every valid spherical triangle is accepted, within the request deadline |
 | Request deadline | 20 seconds; single 504; bulk items get `ok:false,error:"deadline exceeded"` |
 | Invalid JSON, shape or coordinates | Single 400; coordinate errors remain per-item in bulk |
 | Unexpected failure | Generic 500 JSON error |
@@ -112,15 +112,15 @@ Order is preserved; `id` is echoed only when supplied. Successful items include 
 | Rate limiting | Enforce at reverse proxy/edge; return 429 with Retry-After |
 
 Errors: `{"error":"message","model":"grump2000-s2java2011-min6-l6min1"}`.
-Limits are configurable with `MU_BODY_LIMIT`, `MU_BULK_LIMIT` and `MU_TIME_BUDGET`. `MU_MAX_SAMPLES` has been removed. Level-6 densities are read from a memory-mapped table; finer covering cells are sampled on demand with a per-mosaic cache flushed at 100,000 entries. Detail includes every covering cell and region, without truncation; enormous fields can produce several MB of JSON.
+Limits are configurable with `MU_BODY_LIMIT`, `MU_BULK_LIMIT` and `MU_TIME_BUDGET`. Level-6 densities are read from a memory-mapped table; finer covering cells are sampled on demand with a per-mosaic cache flushed at 100,000 entries. Detail includes every covering cell and region, without truncation; enormous fields can produce several MB of JSON.
 
 The minimum level takes precedence over the soft 20-cell covering budget. Cells below level 6 must be expanded even when the budget is exceeded; mandatory single-child refinement may continue beyond level 6.
 
 ### Density table lifecycle
 
-After download, `serve`, `calc` and `build-tables` automatically build a missing or stale table beside `bil/`. Run `python -m mu_calculator build-tables` to prepare it explicitly. Allow roughly 8?10 minutes for table preparation on a six-worker desktop, plus download time; slower machines can take substantially longer. The global level-6 table has 24,576 float64 values (196,736 bytes including its NumPy header), plus a small JSON manifest and lock file. Allow additional space for one temporary table during rebuild; obsolete fingerprinted tables can be removed when no process uses them. No derived data are shipped in the repository or image.
+After download, `serve`, `calc` and `build-tables` automatically build a missing or stale table beside `bil/`. Run `python -m mu_calculator build-tables` to prepare it explicitly. Allow roughly 8 to 10 minutes for table preparation on a six-worker desktop, plus download time; slower machines can take substantially longer. The global level-6 table has 24,576 float64 values (196,736 bytes including its NumPy header), plus a small JSON manifest and lock file. Allow additional space for one temporary table during rebuild; obsolete fingerprinted tables can be removed when no process uses them. No derived data are shipped in the repository or image.
 
-Each value independently samples its cell's level-15 centers in contiguous IJ order and applies the original NumPy float64 mean. Parent values are never reconstructed from child means. A SHA-256 fingerprint covers ordered raster names and contents, sampling/reduction code and table version. Raster hashing runs at startup. Builders hold an OS lock, use bounded chunks and publish the finished table and manifest by atomic rename. Interrupted builds restart; an incomplete or stale table is never served. `MU_TABLE_WORKERS` controls build parallelism (default up to six CPU cores); request serving uses one worker.
+Each value independently samples its cell's level-15 centers in contiguous IJ order and applies the NumPy float64 mean. Parent values are never reconstructed from child means. A SHA-256 fingerprint covers ordered raster names and contents, sampling/reduction code and table version. Raster hashing runs at startup. Builders hold an OS lock, use bounded chunks and publish the finished table and manifest by atomic rename. Interrupted builds restart; an incomplete or stale table is never served. `MU_TABLE_WORKERS` controls build parallelism (default up to six CPU cores); request serving uses one worker.
 
 One calculation worker owns an in-process per-mosaic density cache. Deadlines include queue time. A running calculation may finish after its HTTP deadline; expired queued calculations are discarded before they start.
 

@@ -12,11 +12,11 @@ reverse proxy or edge service; return 429 with Retry-After when throttling.
 Allow at least 30 seconds for upstream responses. Keep credentials in `.env` locally.
 
 First start downloads the rasters and builds the global level-6 density table in
-`population`, then checks the startup example. Allow roughly 8?10 minutes for
-table preparation with six workers, plus download time; slower hosts need longer. The HTTP listener and health check
-are unavailable until preparation completes. Budget several GB for archives,
-3.2 GB for extracted rasters and less than 1 MB for the density table and rebuild
-space. Derived tables stay in the volume and must not be included in an image.
+`population`, then checks the startup example. Allow roughly 8 to 10 minutes for
+table preparation with six workers, plus download time; slower hosts need longer.
+The HTTP listener and health check are unavailable until preparation completes.
+Budget about 260 MB for archives, 3.2 GB for extracted rasters and less than 1 MB
+for the density table and rebuild space. Derived tables stay in the volume and must not be included in an image.
 Set `MU_TABLE_WORKERS` to reduce build CPU/memory usage (default up to six cores).
 The table manifest fingerprints raster contents and sampling code; stale tables
 are rebuilt automatically. Interrupted builds restart safely. `docker compose run

@@ -2,7 +2,7 @@
 
 This document describes, step by step, how the number of Mind Units (MU) awarded for a control field can be computed from the three portal coordinates of the field. The raster, sampling, covering-queue, overlap and aggregation rules are specified below. Exact S2 boundary behaviour is defined by the versioned primitives identified in section 4; those primitives must be reused or ported for an exact re-implementation.
 
-The method is an independent empirical reconstruction that reproduces the values the game awards; it is not official and is not affiliated with Niantic.
+The method is an independent empirical reconstruction; it is not official and is not affiliated with Niantic.
 
 ## Contents
 
@@ -190,7 +190,7 @@ The mosaic must be built from the country files only. Adding continental or glob
 
 ### Raw counts as density
 
-The sampled `count` is used as the density in MU per km^2 as it is. It is not divided by the area of the pixel (well under 1 km^2 at mid-latitudes), and no unit conversion is applied. This is an empirical property of the method: the numbers only match when the raw per-pixel counts are used as if they were per-km^2 densities.
+The sampled `count` is used as the density in MU per km^2 as it is. It is not divided by the area of the pixel (well under 1 km^2 at mid-latitudes), and no unit conversion is applied.
 
 ### Citation and how to obtain it
 
@@ -300,6 +300,7 @@ encode(face, i, j):
     return (face << 61) | (pos << 1) | 1
 
 decode(id):                                   -> face, level, lower-left leaf coordinates
+    face = id >> 61;  level = level(id)
     o = face & 1;  i = j = 0
     for k = 0 .. level-1:
         p  = (id >> (59 - 2*k)) & 3
@@ -368,7 +369,7 @@ When an offset leaves the face, the neighbouring leaf cell is found on the adjac
 
 The covering decides which cells are sampled for density. Because the density of a cell applies to the whole cell, even a part of the cell far outside the triangle, a different covering gives a different MU.
 
-The covering heuristic follows class `S2RegionCoverer` at [Java S2 commit c28f287b996c0cedc5516a0426fbd49f6c9611ec](https://github.com/google/s2-geometry-library-java/tree/c28f287b996c0cedc5516a0426fbd49f6c9611ec) (2011, Apache License 2.0). The shipped implementation ports its queue and refinement rules, but obtains the loop predicates, loop normalisation, cap bound and initial vertex neighbours from **s2geometry 0.14.0** (the C++ library Python bindings). Cell corners and density-grid decoding use **s2sphere 0.2.5**. The geometry primitives are therefore not an unmodified execution of the 2011 Java library.
+The covering heuristic follows class `S2RegionCoverer` at [Java S2 commit c28f287b996c0cedc5516a0426fbd49f6c9611ec](https://github.com/google/s2-geometry-library-java/tree/c28f287b996c0cedc5516a0426fbd49f6c9611ec) (2011, Apache License 2.0). The shipped implementation ports its queue and refinement rules, but obtains the loop predicates, loop normalisation, cap bound and initial vertex neighbours from **s2geometry 0.14.0** (the C++ library Python bindings). Clipped-cell corners and density-grid decoding use **s2sphere 0.2.5**; the bulk interior-area path uses s2geometry corners (section 6). The geometry primitives are therefore not an unmodified execution of the 2011 Java library.
 
 ### Region and parameters
 
@@ -675,6 +676,8 @@ omega(a, b, c) = 2 * atan2( | a . (b x c) | , 1 + a.b + b.c + c.a )
 area_km2 = ( sum of omega over the fan ) * 6371.01^2
 ```
 
+For coverings with at least 1,000 cells, the shipped implementation first obtains the four unit corner vectors of every cell from s2geometry 0.14.0. A cell is classified as entirely inside when all four corners have non-negative dot products with all three triangle normals (computed by NumPy matrix multiplication). Its area is then computed without clipping, using the same two-triangle fan formula with NumPy float64 vector operations (`sum` for dot products, `cross` and `arctan2`). Other cells follow the clipping procedure above with s2sphere corners. This bulk path can differ from scalar clipping in the last floating-point bits.
+
 For `m < 3` the area is `0`. The sum of the overlaps of all covering cells equals the area of the triangle, up to rounding, because the covering cells are disjoint and cover the triangle. The contribution of the cell is `area_km2 * density(C)`; contributions are not rounded.
 
 An earth radius of 6371.01 km is used; the mean radius 6371.0088 km, planar areas, Web Mercator areas and ellipsoidal areas give different values.
@@ -691,7 +694,9 @@ Every covering cell contributes `area_km2 * density(C)` to exactly one **region*
 region_sum[R] += area(T, C) * density(C)        for every covering cell C, R = ancestor(C, 6)
 ```
 
-where `ancestor(C, 6) = C` for a cell of level 6. A region can receive several covering cells (the first example of section 8 has a region with nine); in the second example of section 8 every region receives exactly one.
+Initialise each region sum to float64 zero when its first covering cell is encountered. Process covering cells in ascending id order and add the final region values in ascending region id order, matching the shipped accumulation order.
+
+Here `ancestor(C, 6) = C` for a cell of level 6. A region can receive several covering cells (the first example of section 8 has a region with nine); in the second example of section 8 every region receives exactly one.
 
 ### Minimum
 
@@ -722,7 +727,7 @@ B  52.244048, 10.167482   (52244048, 10167482)
 C  52.295984, 10.231064   (52295984, 10231064)
 ```
 
-The result is **3046 MU**. The numbers below were produced by running the reference implementation.
+The result is **3046 MU**. The following calculation applies the rules of sections 4 to 7.
 
 ### Step 1: unit vectors, triangle area
 
@@ -871,7 +876,7 @@ The same triangle and raster mosaic, with densities recomputed for each covering
 | Same start, descending cell-id ties | `47a5555` | 3046 |
 | Start from the six faces instead of the cap | `47b001d` | 3033 |
 
-The last four ties at priority -207 (steps 19 to 22) decide which of four candidates is kept as a coarse cell; each choice puts a different set of cells into the covering and gives a different MU. The minimum level does not change any row: all cells polled in these variants have level 9 or finer.
+The last four ties at priority -207 (steps 19 to 22) decide which of four candidates is kept as a coarse cell; each choice puts a different set of cells into the covering and gives a different MU. The minimum level does not change the MU or final covering in any row for this triangle. The cap-start variants poll only cells of level 9 or finer. The six-face variant starts at level 0 and also polls coarser cells; the mandatory expansion below level 6 leaves its final covering unchanged.
 
 ### Second example: a large field
 
@@ -883,7 +888,7 @@ B   22.905822, 33.272151   (22905822, 33272151)
 C   -0.596665, 35.028782   (-596665, 35028782)
 ```
 
-The result is **76,732,083 MU** (unrounded total 76,732,083.15944749). The numbers were produced by running the reference implementation with `min_level = 6`, computing every density directly from its own level-15 samples. Only totals are listed; a per-cell table would have 195 rows.
+The result is **76,732,083 MU** (unrounded total 76,732,083.15944749). The calculation uses `min_level = 6`, with every density computed directly from its own level-15 samples. Only totals are listed; a per-cell table would have 195 rows.
 
 | Quantity | Value |
 |---|---|
@@ -943,9 +948,9 @@ Each item lists what goes wrong when the step is done differently.
 * **Whole-cell density.** The density is a property of the covering cell, not of the triangle. A triangle that overlaps a small part of a cell takes that cell's full density, including populated areas outside the triangle.
 * **Dependence on the exact covering.** Because the covering is a budget-limited heuristic with ties, the results are sensitive to the exact algorithm (section 8). The heuristic follows the 2011 Java library with the geometry primitives and versions specified in section 4.
 * **Numerically borderline cases.** Level selection uses `floor(log2(.))` of a floating-point value, region predicates compare cell edges with triangle edges, and the heap ties depend on exact equality of integer priorities. Triangles that fall within floating-point noise of such a boundary may be computed differently by implementations that differ in rounding, for example in the way the bounding rectangle or the cap is computed. Final rounding of an exact half-integer total is a matter of convention (half up is used).
-* **Covering size and cost for large fields.** The minimum level 6 overrides `max_cells` (section 4), so the covering of a large field has hundreds or thousands of cells, up to the 24,576 level-6 cells of the sphere, and each level-6 cell needs 262,144 density samples (section 5). Precompute the level-6 densities if many large fields are evaluated.
+* **Covering size and cost for large fields.** The minimum level 6 overrides `max_cells` (section 4), so the covering of a large field can have hundreds or thousands of cells across at most 24,576 level-6 regions; finer boundary cells can make the cell count exceed the region count. Each level-6 cell needs 262,144 density samples (section 5). Precompute the level-6 densities if many large fields are evaluated.
 * **Poles and the antimeridian.** The description is the generic S2 procedure (bounding rectangle with pole handling, cube-face coordinates, face-wrap in the vertex-neighbour step). Special behaviour for triangles that contain a pole, cross the 180-degree meridian, or lie close to cube-face edges is not examined here beyond that.
-* **Large fields.** The procedure is defined for any triangle smaller than a hemisphere. The second example of section 8 (3.3 million km^2, entirely within cube face 0) is computed with the rules of sections 4 to 7. Fields that cross cube-face edges or contain a pole at that size are covered only by the generic procedure of the previous item. For very large fields, those whose covering consists mainly of level-6 cells (roughly a million km^2 and more), the rules given here, in particular the minimum covering level 6, are likely but not confirmed to be correct in every case; individual results may differ from the value the game awards.
+* **Large fields.** The procedure is defined for any triangle smaller than a hemisphere. The second example of section 8 (3.3 million km^2, entirely within cube face 0) is computed with the rules of sections 4 to 7. Fields that cross cube-face edges or contain a pole at that size are covered only by the generic procedure of the previous item. For very large fields, those whose covering consists mainly of level-6 cells (often from a few hundred thousand km^2, depending on shape and position), the rules given here, in particular the minimum covering level 6, are likely but not confirmed to be correct in every case; individual results may differ from the value the game awards.
 * **Degenerate input.** Triangles with two identical or collinear vertices, or antipodal vertices, are not addressed.
 
 ---

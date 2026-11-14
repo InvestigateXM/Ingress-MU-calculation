@@ -2,6 +2,7 @@
 
 Usage: python site/build.py [path/to/METHOD.md]
 """
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -46,6 +47,12 @@ def main():
         source.read_text(encoding="utf-8"),
         extensions=["tables", "fenced_code", "toc"],
     )
+    # Link the contents list to the numbered section headings.
+    ids = iter(re.findall(r'<h2 id="(\d+-[^"]*)"', html))
+    contents = re.search(r"<ol>.*?</ol>", html, re.S)
+    if contents and contents.group(0).count("<li>") == len(re.findall(r'<h2 id="\d+-', html)):
+        linked = re.sub(r"<li>(.*?)</li>", lambda m: f'<li><a href="#{next(ids)}">{m.group(1)}</a></li>', contents.group(0))
+        html = html.replace(contents.group(0), linked, 1)
     shutil.rmtree(OUT, ignore_errors=True)
     OUT.mkdir()
     (OUT / "method.html").write_text(TEMPLATE.replace("{body}", html), encoding="utf-8")
