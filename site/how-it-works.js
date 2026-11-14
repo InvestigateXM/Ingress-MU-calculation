@@ -45,6 +45,17 @@ function build(root, tr) {
     svg.style.setProperty('--fill-' + name, `url(#hatch-${name}-${tr.id})`);
   }
   svg.appendChild(defs);
+  const map = JSON.parse(document.getElementById('map-data')?.textContent || '{}')[tr.id];
+  const mapLayer = el('g', { class: 'base-map', 'aria-label': 'Orientation map' });
+  if (map) {
+    for (const [kind, coords, closed] of map.features) {
+      mapLayer.appendChild(el(closed ? 'polygon' : 'polyline', {
+        class: 'map-' + kind, points: coords.map(p => p.join(',')).join(' '),
+        'vector-effect': 'non-scaling-stroke' }));
+    }
+    for (const [name, x, y] of map.labels) mapLayer.appendChild(el('text', { class: 'map-label', x, y }, name));
+  }
+  svg.appendChild(mapLayer);
   const nodes = {};
   for (const [id, kind, g, text] of tr.els) {
     let n;
@@ -94,6 +105,25 @@ function build(root, tr) {
   }
   const legend = h('div', { class: 'legend' });
   wrap.appendChild(legend);
+  let comparison = null;
+  if (tr.comparison) {
+    comparison = h('div', { class: 'comparison', hidden: '' });
+    const choices = h('div', { class: 'comparison-choices', role: 'group', 'aria-label': 'Compare coverings' });
+    for (const field of ['F', 'G']) choices.appendChild(h('button', { type: 'button', class: 'sec', 'data-field': field }, `Field ${field} covering`));
+    comparison.appendChild(choices);
+    for (const field of ['F', 'G']) {
+      const c = tr.comparison[field];
+      comparison.appendChild(h('p', { class: 'comparison-numbers', 'data-field': field },
+        `${field}: ${c.token}, level ${c.level} — density ${num(c.density, 1)} × overlap ${num(c.overlap, 0)} km² ≈ ${num(c.contribution, 0)} MU`));
+    }
+    wrap.insertBefore(comparison, legend);
+  }
+  if (map) {
+    const credit = h('p', { class: 'map-credit' });
+    credit.append(tr.id === 'a5' ? 'Las Vegas / Lake Mead · Map: ' : 'Munich region · Map: ', h('a', { href: tr.id <= 'a3' ? 'https://www.openstreetmap.org/copyright' : 'https://www.naturalearthdata.com/about/terms-of-use/' },
+      tr.id <= 'a3' ? '© OpenStreetMap contributors (ODbL)' : 'Natural Earth (public domain)'));
+    wrap.appendChild(credit);
+  }
 
   const cap = h('p', { class: 'cap', 'aria-live': 'polite' });
   const eq = h('p', { class: 'eq' });
@@ -136,7 +166,7 @@ function build(root, tr) {
     root.appendChild(d);
   }
   if (tr.attribution) root.appendChild(h('p', { class: 'hint' }, tr.attribution));
-  return { svg, nodes, legend, cap, eq, bud, tbl, range, count, playB, prevB, nextB, firstB, speed, wrap };
+  return { svg, nodes, legend, cap, eq, bud, tbl, range, count, playB, prevB, nextB, firstB, speed, wrap, comparison, map };
 }
 
 function makeTable(head, rows, fmts, n, hl) {
@@ -217,10 +247,36 @@ function placeLabels(ui, tr) {
   }
   const firstLabel = ui.svg.querySelector('.k-t');
   ui.svg.querySelectorAll('.label-leader').forEach(n => ui.svg.insertBefore(n, firstLabel));
+  ui.svg.querySelectorAll('.map-label').forEach((n, i) => {
+    const [, bx, by] = ui.map.labels[i], b = n.getBBox(), hw = b.width / 2 + 4*u, hh = b.height / 2 + 3*u;
+    n.style.visibility = 'hidden';
+    for (const d of [0, -18, 18, -36, 36]) {
+      const cx = Math.max(x+hw, Math.min(x+w-hw, bx)), cy = Math.max(y+hh, Math.min(y+ht-hh, by+d*u));
+      const r = [cx-hw, cy-hh, cx+hw, cy+hh];
+      if (!occupied.some(b => r[0]<b[2] && b[0]<r[2] && r[1]<b[3] && b[1]<r[3])) {
+        n.setAttribute('x',cx); n.setAttribute('y',cy); n.style.visibility = 'visible'; occupied.push(r); break;
+      }
+    }
+  });
 }
 
 function render(ui, tr, k) {
   const st = states(tr, k);
+  if (ui.comparison) {
+    const comparing = k >= 6;
+    ui.comparison.hidden = false;
+    ui.comparison.style.visibility = comparing ? 'visible' : 'hidden';
+    ui.comparison.inert = !comparing;
+    if (comparing) {
+      const field = ui.compareField || 'F', c = tr.comparison[field];
+      for (const [id] of tr.els) if (/^(F:|G:|pF:|pG:|qF:|qG:|dec)/.test(id)) st[id] = '';
+      Object.assign(st, c.cover);
+      st[c.highlight] = 'hl'; st['dec' + field] = 't';
+      st.fF = 'field'; st.fG = 'field2'; st.tF3 = st.tG3 = 't';
+      ui.comparison.querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.field === field)));
+      ui.comparison.querySelectorAll('p').forEach(p => p.classList.toggle('active', p.dataset.field === field));
+    }
+  }
   const step = tr.steps[k];
   const used = {};
   for (const [id, kind] of tr.els) {
@@ -231,6 +287,7 @@ function render(ui, tr, k) {
   }
   // field outlines are drawn on top of the cells
   for (const [id, kind] of tr.els) if (kind === 'p' && (st[id] === 'field' || st[id] === 'field2')) ui.svg.insertBefore(ui.nodes[id], ui.svg.querySelector('.sb'));
+  ui.svg.querySelectorAll('.map-label').forEach(n => ui.svg.insertBefore(n, ui.svg.querySelector('.sb')));
   for (const [id, kind] of tr.els) if (kind === 't') ui.svg.insertBefore(ui.nodes[id], ui.svg.querySelector('.sb'));
   ui.cap.textContent = step.c;
   ui.eq.textContent = step.eq || '';
@@ -327,6 +384,9 @@ async function init(section) {
   ui.prevB.onclick = () => { stop(); show(k - 1); };
   ui.firstB.onclick = () => { stop(); show(0); };
   ui.range.oninput = () => { stop(); show(Number(ui.range.value)); };
+  ui.comparison?.querySelectorAll('button').forEach(b => b.onclick = () => {
+    ui.compareField = b.dataset.field; render(ui, tr, k);
+  });
   ui.wrap.addEventListener('keydown', e => {
     const map = { ArrowRight: () => { stop(); show(k + 1); }, ArrowLeft: () => { stop(); show(k - 1); },
       Home: () => { stop(); show(0); }, End: () => { stop(); show(last); }, ' ': toggle };

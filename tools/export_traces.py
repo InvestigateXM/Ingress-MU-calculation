@@ -883,6 +883,8 @@ def build_a5(calc):
     tr.text("tG3", proj.ll(A5_INNER[2][0] / 1e6, A5_INNER[2][1] / 1e6), "G3")
     domF = max(fF["cells"], key=lambda c: c["c"])
     domG = max(fG["cells"], key=lambda c: c["c"])
+    cell_label(tr, 'decF', domF['id'], proj, 'F: ' + domF['t'])
+    cell_label(tr, 'decG', domG['id'], proj, 'G: ' + domG['t'])
     partsF, partsG = merge_parts(fF, domF["id"]), merge_parts(fG, domG["id"])
     assert [p[1] for p in partsF if p[0] == domG["id"]] == ["inside"], "the cell of G is not a final inside cell of F"
     dens = {}
@@ -924,6 +926,11 @@ def build_a5(calc):
                  "p:kept": "Final cell kept whole because of the budget"}
     heatF = {f"F:{c['t']}": "heat" for c in fF["cells"]}
     heatG = {f"G:{c['t']}": "heat" for c in fG["cells"]}
+    tr.extra['comparison'] = {
+        pre: dict(cover=heat, highlight=f'{pre}:{dom["t"]}', token=dom['t'],
+                  level=dom['lv'], density=dom['d'], overlap=dom['ov'], contribution=dom['c'])
+        for pre, heat, dom in [('F', heatF, domF), ('G', heatG, domG)]
+    }
     pl = partsF
     tr.step(f"Two example fields. F is the larger one, {fF['area']:,.0f} km². G, {fG['area']:,.0f} km², shares the portals A and B with F "
             f"and lies completely inside F: its third portal G3 is {margin[0]:.1f} km inside the edge of F. "
@@ -955,11 +962,14 @@ def build_a5(calc):
             eq=f"({' + '.join(fmt(dens[('G', p[0])], 1) for p in partsG)}) / 4 = {fmt(domG['d'], 1)}")
     tr.step(f"Same ground, different cell. F counts {domF['ov']:,.0f} km² of its area at the density of the level-{domF['lv']} cell, "
             f"{fmt(domF['d'], 1)}. G counts {domG['ov']:,.0f} km² at the density of the level-{domG['lv']} cell, {fmt(domG['d'], 1)}. "
-            f"G is part of F, but the density that applies to this ground is {domG['d'] / domF['d']:.1f} times as large.",
+            f"G is part of F, but the density that applies to this ground is {domG['d'] / domF['d']:.1f} times as large. "
+            f"F averages the populated cell {domG['t']} with three sparsely populated siblings; G keeps it separately.",
             {"@pG": "", "@qG": "", "fF": "field", "tF3": "t"}, tb=["cmp", 2, None],
             eq=f"F: {domF['ov']:,.0f} km² × {fmt(domF['d'], 1)} = {domF['c']:,.0f}     G: {domG['ov']:,.0f} km² × {fmt(domG['d'], 1)} = {domG['c']:,.0f}")
-    tr.step(f"Result: G earns {fG['mu']:,} MU and F earns {fF['mu']:,} MU. The covering depends on the full geometry of the field, including its size, shape and position, and with it "
-            f"the cells whose densities are averaged for a given piece of ground.", {}, tb=["totals", 2, None],
+    tr.step(f"Result: G earns {fG['mu']:,} MU and F earns {fF['mu']:,} MU. The same ground is multiplied by a different density: "
+            f"F's covering averages the populated cell {domG['t']} with three sparsely populated siblings in {domF['t']}, "
+            f"while G keeps {domG['t']} separately. Switch between the coverings to compare the highlighted cells. "
+            f"The covering depends on the field's size, shape and position.", {}, tb=["totals", 2, None],
             eq=f"MU(G) = {fG['mu']:,}  >  MU(F) = {fF['mu']:,}")
     tr.extra["summary"] = [
         ["Outer field F", "; ".join(coord_str(p) for p in A5_OUTER)], ["Inner field G", "; ".join(coord_str(p) for p in A5_INNER)],

@@ -2,6 +2,7 @@
 
 Usage: python site/build.py [path/to/METHOD.md]
 """
+import json
 import re
 import shutil
 import sys
@@ -59,6 +60,11 @@ def main():
     (OUT / "method.html").write_text(TEMPLATE.replace("{body}", html), encoding="utf-8")
     for name in STATIC:
         shutil.copy(SITE / name, OUT / name)
+    maps = {f.stem: json.loads(f.read_text(encoding='utf-8')) for f in sorted((SITE / 'maps').glob('a*.json'))}
+    page = OUT / 'how-it-works.html'
+    page.write_text(page.read_text(encoding='utf-8').replace('<!-- MAP_DATA -->',
+        '<script type="application/json" id="map-data">' + json.dumps(maps, ensure_ascii=False, separators=(',', ':')).replace('<', '\\u003c') + '</script>'), encoding='utf-8')
+    shutil.copytree(SITE / 'maps', OUT / 'maps')
     shutil.copytree(SITE / "traces", OUT / "traces")
     print(f"built {OUT} from {source}")
 

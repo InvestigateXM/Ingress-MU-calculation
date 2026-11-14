@@ -167,3 +167,36 @@ def test_a1_samples_and_licence_excerpt():
     for name, tr in LOAD.items():
         if name != "a1":
             assert "samples13" not in tr["check"] and "samples12" not in tr["check"]
+
+
+def test_orientation_maps_match_trace_projections():
+    folder = TRACES.parent / 'maps'
+    size = 0
+    for name, trace in LOAD.items():
+        path = folder / (name + '.json')
+        data = json.loads(path.read_text(encoding='utf-8'))
+        size += path.stat().st_size
+        assert data['center'] == trace['center'] and data['view'] == trace['view']
+        assert data['features'] and data['labels']
+        assert ('OpenStreetMap' if name <= 'a3' else 'Natural Earth') in data['source']
+        x, y, w, h = data['view']
+        for kind, coords, closed in data['features']:
+            assert kind in ('road', 'rail', 'water', 'river', 'urban')
+            assert len(coords) >= (4 if closed else 2)
+            for a, b in coords:
+                assert x - .001 <= a <= x + w + .001
+                assert y - .001 <= b <= y + h + .001
+    assert size < 70_000
+
+
+def test_comparison_uses_the_actual_covering_cells():
+    tr = LOAD['a5']
+    for field, key in [('F', 'outer'), ('G', 'inner')]:
+        c = tr['comparison'][field]
+        block = tr['check'][key]
+        cells = {row[0]: row for row in block['cells']}
+        assert set(c['cover']) == {field + ':' + token for token in cells}
+        token, level, overlap, dens = cells[c['token']]
+        assert c['highlight'] == field + ':' + token
+        assert (c['level'], c['overlap'], c['density']) == (level, overlap, dens)
+        assert c['contribution'] == overlap * dens

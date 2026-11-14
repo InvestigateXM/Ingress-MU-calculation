@@ -166,3 +166,14 @@ Population data have separate terms and are not covered by the code license. The
 Citation: Center for International Earth Science Information Network (CIESIN), Columbia University; International Food Policy Research Institute (IFPRI); The World Bank; and Centro Internacional de Agricultura Tropical (CIAT). 2011. *Global Rural-Urban Mapping Project, Version 1 (GRUMPv1): Population Count Grid*. Palisades, NY: NASA Socioeconomic Data and Applications Center (SEDAC). [doi:10.7927/H4VT1Q1H](https://doi.org/10.7927/H4VT1Q1H).
 
 The calculator uses year-2000 UN-adjusted 30 arc-second BIL country files.
+
+### Animation orientation maps
+
+The How it works page includes small, static vector orientation maps, embedded
+in the built HTML without external tiles or map requests. Maps 1–3 contain
+© OpenStreetMap contributors data under ODbL 1.0; maps 4–5 use Natural Earth
+1:10m public-domain data. These map databases have their own licences, separately
+from the calculator code. See [sources, licences and downloadable extracts](site/maps/README.md)
+and [NOTICE](NOTICE). Urban outlines are orientation features, not the GRUMP
+year-2000 counts. Regenerate with `python tools/extract_maps.py --cache /path/to/map-cache`
+(optional extraction dependencies: `pyshp shapely`), then `python site/build.py`.
