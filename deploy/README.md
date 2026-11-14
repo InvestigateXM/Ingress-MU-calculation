@@ -32,7 +32,7 @@ tables (up to 256 MiB at level 11) are file-backed as well. See the main README
 for the size and speed table and for what was not measured.
 
 Manifests validate raster identity, explicit sampling version and file checksums.
-The fingerprint upgrade rebuilds legacy level-6 tables once. Raising the setting
+Raising the setting
 builds only missing levels; lowering it preserves but ignores higher tables.
 Interrupted builds resume verified parent tiles. Run `docker compose run --rm mu
 build-tables` with the same settings and volume to prepare without the API.
