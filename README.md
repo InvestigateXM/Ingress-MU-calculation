@@ -36,6 +36,8 @@ The `s2geometry` wheel is published for x86-64 Linux and macOS only, so the imag
 
 Public base: `https://api.investigatexm.com`. Browser documentation and client: `https://mu.investigatexm.com`. Local base: `http://localhost:8000`.
 
+Requests to the public API are processed on the operator's server and pass through its reverse proxy and CDN, where requests (including their coordinates) may be logged like any other web request. To keep planned field coordinates local, run the identical calculation with the Docker container described above. NASA Earthdata credentials are needed only for the one-time data download; after that, the container needs no outbound requests to answer API requests.
+
 Points are strings `"latitude,longitude"` or objects `{"lat":52.324297,"lng":10.182664}`. Exactly three distinct points must form a nonzero spherical triangle. Latitude is -90..90; longitude is -180..180. Coordinates round half-up to six decimal places before calculation.
 
 `POST /getMU` accepts:
@@ -68,7 +70,7 @@ Add `?detail=1` or JSON `"detail":true` for these additional fields:
 - `regions`: objects with `s2_token`, `raw_mu`, `minimum_applied_mu`.
 - `cells`: objects with `s2_id` (decimal string), `s2_token`, `level`, `overlap_km2`, `density`, `raw_mu`.
 
-The query flag overrides the body flag. False/0 disables detail.
+The query flag overrides the body flag. Query strings accept `1`, `0`, `true` and `false` (case-insensitive). JSON bodies accept booleans, numbers `1`/`0`, and strings `"1"`, `"0"`, `"true"`, `"false"` (case-insensitive). Omitted or JSON `null` disables detail; false/0 values disable it too. Other values return 400 with `detail must be true, false, 1 or 0.`
 
 `POST /getMUbulk` accepts:
 
@@ -99,17 +101,20 @@ Order is preserved; `id` is echoed only when supplied. Successful items include 
 
 | Endpoint or rule | Behavior |
 | --- | --- |
-| `GET /health` | `{"ok":true,"rasters":234,"model":"grump2000-s2java2011-min6-l6min1"}` after startup self-test |
-| `GET /` | JSON description, documentation links and model |
+| `GET /health` | `{"ok":true,"rasters":234,"model":"grump2000-s2java2011-min6-l6min1","table_max_level":6,"table_levels_ready":[6]}` after startup self-test (table fields reflect configuration) |
+| `GET /` | JSON description, documentation links, `table_max_level` and model |
 | `GET /docs` | Generated interactive API documentation |
 | Request body | 32,768 bytes; 413 above this, including streamed bodies |
 | Bulk | 1–50 fields; otherwise 400 |
 | Field size | No size cap; every valid spherical triangle is accepted, within the request deadline |
 | Request deadline | 20 seconds; single 504; bulk items get `ok:false,error:"deadline exceeded"` |
 | Invalid JSON, shape or coordinates | Single 400; coordinate errors remain per-item in bulk |
-| Unexpected failure | Generic 500 JSON error |
+| Unknown path / unsupported method | 404 `Not Found` / 405 `Method Not Allowed` |
+| Unexpected failure | 500 `Calculation failed.` |
 | CORS | Origin `*`; GET/POST/OPTIONS |
-| Rate limiting | Enforce at reverse proxy/edge; return 429 with Retry-After |
+| Rate limiting | The service enforces no rate limit; an operator may add one at a reverse proxy |
+
+Degenerate inputs such as `["0,0","0,180","0,90"]` (an antipodal pair) and `["0,0","0,1","0,2"]` return 400 with `The triangle must have a nonzero area.` Nonfinite coordinate numbers return `Coordinate 1: numbers must be finite.` (the index identifies the point).
 
 Errors: `{"error":"message","model":"grump2000-s2java2011-min6-l6min1"}`.
 Limits are configurable with `MU_BODY_LIMIT`, `MU_BULK_LIMIT` and `MU_TIME_BUDGET`. Configured precomputed densities are read from memory-mapped tables; other covering cells are sampled on demand with a per-mosaic cache flushed at 100,000 entries. Detail includes every covering cell and region, without truncation; enormous fields can produce several MB of JSON.

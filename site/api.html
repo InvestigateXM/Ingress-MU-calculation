@@ -25,9 +25,13 @@
   <li>No API key and no registration.</li>
   <li>Requests and responses are JSON.</li>
   <li>CORS is open (<code>Access-Control-Allow-Origin: *</code>), so the API can be called from a browser on any site.</li>
-  <li>Every response contains <code>model</code>, an identifier of the calculation model, currently <code>grump2000-s2java2011-min6-l6min1</code>.</li>
+  <li>Every calculation response contains <code>model</code>, an identifier of the calculation model, currently <code>grump2000-s2java2011-min6-l6min1</code>.</li>
 </ul>
 <p class="hint">Results for very large fields (from a few hundred thousand km²) are likely but not confirmed to be correct in every case.</p>
+
+<h2>Run it yourself</h2>
+<p>Requests to the public API are processed on the operator's server and pass through its reverse proxy and CDN, where requests (including their coordinates) may be logged like any other web request.</p>
+<p>To keep planned field coordinates local, run the identical calculation with the Docker container. Only NASA Earthdata credentials are needed for the one-time population data download; after that, the container needs no outbound requests to answer API requests. See the <a href="https://github.com/InvestigateXM/Ingress-MU-calculation#readme">README on GitHub</a> for setup, configuration and source code.</p>
 
 <h2>Endpoints</h2>
 <table>
@@ -52,7 +56,7 @@
 </ul>
 
 <h2>Single field: <code>GET /getMU</code></h2>
-<p>Pass the three points as repeated <code>c=latitude,longitude</code> parameters. <code>detail=1</code> is optional (see <a href="#detail">Detail</a>). In the query string, only <code>1</code> and <code>0</code> are accepted as values of <code>detail</code>.</p>
+<p>Pass the three points as repeated <code>c=latitude,longitude</code> parameters. <code>detail=1</code> is optional (see <a href="#detail">Detail</a>). In the query string, <code>1</code>, <code>0</code>, <code>true</code> and <code>false</code> (case-insensitive) are accepted as values of <code>detail</code>.</p>
 <pre><code>GET /getMU?c=52.324297,10.182664&amp;c=52.244048,10.167482&amp;c=52.295984,10.231064</code></pre>
 <p>Response (HTTP 200):</p>
 <pre><code>{
@@ -72,7 +76,7 @@
 </table>
 
 <h3 id="detail">Detail</h3>
-<p><code>detail=1</code> in the query string (on both <code>GET</code> and <code>POST</code>) or <code>"detail": true</code> in a JSON body adds the intermediate results. The query parameter takes precedence over the body. In a JSON body, <code>true</code>, <code>false</code>, <code>1</code> and <code>0</code> are accepted; without the flag the fields below are omitted.</p>
+<p><code>detail=1</code> in the query string (on both <code>GET</code> and <code>POST</code>) or <code>"detail": true</code> in a JSON body adds the intermediate results. The query parameter takes precedence over the body. In a JSON body, booleans, numbers <code>1</code>/<code>0</code>, and strings <code>"1"</code>, <code>"0"</code>, <code>"true"</code>, <code>"false"</code> (case-insensitive) are accepted; <code>null</code> disables detail; true/1 values enable detail, false/0 values disable it, and without the flag the fields below are omitted.</p>
 <table>
   <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
   <tbody>
@@ -207,11 +211,12 @@ GET /
   <thead><tr><th>Status</th><th>Cause</th><th><code>error</code></th></tr></thead>
   <tbody>
     <tr><td>400</td><td>Latitude or longitude out of range</td><td><code>Coordinate 1: latitude must be -90 to 90; longitude -180 to 180.</code></td></tr>
+    <tr><td>400</td><td>Nonfinite coordinate number</td><td><code>Coordinate 1: numbers must be finite.</code></td></tr>
     <tr><td>400</td><td>Not a number</td><td><code>Coordinate 1: use decimal numbers, such as 52.245944, 10.539506.</code></td></tr>
     <tr><td>400</td><td>Not two comma-separated parts, or a <code>{lat, lng}</code> object with other keys</td><td><code>Coordinate 1: use latitude, longitude.</code></td></tr>
     <tr><td>400</td><td>Not exactly three points</td><td><code>Supply exactly three coordinates.</code></td></tr>
     <tr><td>400</td><td>Points equal after rounding</td><td><code>The three coordinates must be distinct at six decimal places.</code></td></tr>
-    <tr><td>400</td><td>Points on one great circle</td><td><code>The triangle must have a nonzero area.</code></td></tr>
+    <tr><td>400</td><td>Degenerate triangle, for example <code>["0,0","0,180","0,90"]</code> or <code>["0,0","0,1","0,2"]</code></td><td><code>The triangle must have a nonzero area.</code></td></tr>
     <tr><td>400</td><td>Invalid <code>detail</code> value</td><td><code>detail must be true, false, 1 or 0.</code></td></tr>
     <tr><td>400</td><td>Malformed JSON body</td><td><code>Malformed JSON.</code></td></tr>
     <tr><td>400</td><td>JSON body is not an object</td><td><code>Expected a JSON object.</code></td></tr>
@@ -275,10 +280,9 @@ request = urllib.request.Request(
 with urllib.request.urlopen(request, timeout=30) as response:
     data = json.load(response)
 print(data["mu"], data["area_km2"])  # 3046 16.311625962717194</code></pre>
-<p>The example sets its own <code>User-Agent</code>: requests with the default <code>Python-urllib</code> user agent are refused with status 403 (<code>error code: 1010</code>) by the network in front of the API. A failed request raises <code>urllib.error.HTTPError</code>; its body is the JSON error response, readable with <code>json.load(error)</code>.</p>
+<p>The example sets its own <code>User-Agent</code>: requests with the default <code>Python-urllib</code> user agent are refused with status 403 (<code>error code: 1010</code>) by the network in front of the API. A failed request raises <code>urllib.error.HTTPError</code>; API error bodies are JSON, readable with <code>json.load(error)</code>, but proxy/CDN errors may use other formats.</p>
 
-<h2>Run it yourself</h2>
-<p>The same API is available as a Docker container, built from the project's repository. It needs only NASA Earthdata credentials: on first start it downloads the population data and prepares its tables. See the <a href="https://github.com/InvestigateXM/Ingress-MU-calculation#readme">README on GitHub</a> for setup, configuration and the source code.</p>
+<p>The service enforces no rate limit; an operator may add one at a reverse proxy.</p>
 
 <h2>Fair use</h2>
 <p>The API is free to use and provided without a guarantee of availability. Please keep the request rate moderate, and use <code>/getMUbulk</code> instead of many single requests when several fields are needed.</p>

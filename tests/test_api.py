@@ -114,3 +114,27 @@ def test_preparation_failure_prevents_startup(monkeypatch):
     with pytest.raises(RuntimeError, match='table preparation failed'):
         with TestClient(api.app):
             pytest.fail('API served before preparation')
+import pytest
+
+@pytest.mark.parametrize('value, enabled', [('1', True), ('0', False), ('true', True), ('false', False), ('TRUE', True), ('FALSE', False)])
+def test_detail_query(client, value, enabled):
+    for endpoint, body in [('/getMU', {'coordinates': []}), ('/getMUbulk', {'fields': [[]]})]:
+        response = client.post(endpoint, params={'detail': value}, json=dict(body, detail=not enabled))
+        assert response.status_code == 200
+        result = response.json()
+        if endpoint == '/getMUbulk':
+            result = result['results'][0]
+        assert ('raw_mu' in result) == enabled
+    response = client.get('/getMU', params={'detail': value})
+    assert ('raw_mu' in response.json()) == enabled
+
+@pytest.mark.parametrize('value, enabled', [(True, True), (False, False), (1, True), (0, False), ('1', True), ('0', False), ('true', True), ('false', False), ('TRUE', True), (None, False)])
+def test_detail_json(client, value, enabled):
+    response = client.post('/getMU', json={'coordinates': [], 'detail': value})
+    assert response.status_code == 200
+    assert ('raw_mu' in response.json()) == enabled
+
+def test_invalid_detail(client):
+    for response in [client.get('/getMU?detail=yes'), client.post('/getMU', json={'detail': 'yes'}), client.post('/getMUbulk?detail=yes', json={'fields': [[]]})]:
+        assert response.status_code == 400
+        assert response.json()['error'] == 'detail must be true, false, 1 or 0.'

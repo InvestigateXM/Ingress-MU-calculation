@@ -171,3 +171,9 @@ def test_observer_does_not_change_the_covering():
         assert events[-1][0] == "normalize" and events[-1][1]["after"] == observed
         polls = [d for e, d in events if e == "poll"]
         assert all(d["forced"] or d["expand"] or len(d["children"]) > 1 for d in polls)
+
+
+@pytest.mark.parametrize("points", [["0,0", "0,180", "0,90"], ["0,0", "0,1", "0,2"]])
+def test_degenerate_message(points):
+    with pytest.raises(ValueError, match="^The triangle must have a nonzero area[.]$"):
+        parse_coordinates(points)

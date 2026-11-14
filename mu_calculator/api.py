@@ -111,6 +111,10 @@ async def payload(request):
 
 
 def detail_flag(value):
+    if isinstance(value, str):
+        value = value.lower()
+        if value in ("true", "false"):
+            return value == "true"
     if value in (False, None, "0", 0):
         return False
     if value in (True, "1", 1):
