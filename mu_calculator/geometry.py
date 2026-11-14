@@ -95,11 +95,8 @@ def density(g, cell_id, level=15):
     cell_level = s2sphere.CellId(cell_id).level()
     if level == 15 and cell_level in g.density_table:
         from .tables import lookup
-        value = lookup(g.density_table[cell_level], cell_id)
-        if np.isfinite(value):
-            return value
-        del g.density_table[cell_level]
-    k = (cell_id, level)
+        return lookup(g.density_table[cell_level], cell_id)
+    k =(cell_id, level)
     if k not in g.density_cache:
         if len(g.density_cache) >= CACHE_LIMIT:
             g.density_cache.clear()  # Full flush keeps the cache bounded.

@@ -13,7 +13,10 @@ import s2sphere
 
 # Manifest schema version.
 VERSION = 1
-# Bump whenever raster sampling, contiguous reduction or table layout changes.
+# Bump whenever a change can alter any table value or the table layout:
+# geometry.Grump.__init__/pix/sample, geometry.l15_centres, repack, tile_values,
+# the S2 cell numbering. The fingerprint does not hash source code, so tables
+# built by the old logic are otherwise accepted as current.
 SAMPLING_VERSION = "direct-ij-l15-f64-s2id-v1"
 LEVEL = 6
 COUNT = 6 * 4**LEVEL
@@ -169,6 +172,10 @@ def ensure_tables(folder, workers=None, maximum=None):
                         states[level][index] = digest
             except (OSError, ValueError, KeyError, TypeError, EOFError):
                 a = np.lib.format.open_memmap(partial, mode="w+", dtype="<f8", shape=(count(level),))
+                # The file is sparse; reserve its blocks so that a full volume raises
+                # ENOSPC here instead of killing the process with SIGBUS on a page write.
+                with open(partial, "r+b") as stream:
+                    os.posix_fallocate(stream.fileno(), 0, os.fstat(stream.fileno()).st_size)
             arrays[level] = a
             paths[level] = target, partial, state_path
 

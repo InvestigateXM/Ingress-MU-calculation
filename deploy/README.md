@@ -14,17 +14,22 @@ Allow at least 30 seconds for upstream responses. Keep credentials in `.env` loc
 First start downloads the rasters and prepares levels 6 through `MU_TABLE_MAX_LEVEL`
 (integer 6-11, default 6) in `population`, then checks the startup example.
 Level 6 is sufficient for correctness. Higher levels accelerate cold sampling.
-Allow roughly 8 to 10 minutes for level 6 with six workers, plus download time;
-higher levels and slower hosts need longer. The HTTP listener and health check
+Allow about 9 to 10 minutes for the build with six workers (any number of levels
+takes one pass over the rasters), plus download time; slower hosts need longer.
+Every start also reads and hashes the 3.2 GB of rasters (seconds on local disk,
+about 20 s over a slow mount). The HTTP listener and health check
 are unavailable until all configured tables are ready. Keep the initial health
 check grace period generous (the image allows 180 minutes).
 
 Budget at least 5 GB for the volume: about 260 MB of archives, 3.2 GB of rasters,
 up to 268 MB of tables and another 268 MB for replacement, plus slack. Old
 fingerprinted generations add further space. Derived tables stay in the volume.
-Set `MU_TABLE_WORKERS` to reduce build CPU/memory usage (default up to six cores).
-At level 11 table validation alone can make roughly 256 MiB resident, plus raster
-pages and worker allocations. See the size/speed table in the main README.
+Set `MU_TABLE_WORKERS` to reduce build CPU use (default 6 in `docker-compose.yml`; up to six cores otherwise). Private
+build memory is about 55 MiB per worker plus about 85 MiB for the parent, at any
+level. Workers also map the rasters, so process monitors show up to 3 GiB per
+worker; these are shared, reclaimable file pages, not private memory. The mapped
+tables (up to 256 MiB at level 11) are file-backed as well. See the main README
+for the size and speed table and for what was not measured.
 
 Manifests validate raster identity, explicit sampling version and file checksums.
 The fingerprint upgrade rebuilds legacy level-6 tables once. Raising the setting
