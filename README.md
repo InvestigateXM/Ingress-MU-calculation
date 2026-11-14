@@ -38,6 +38,29 @@ Public base: `https://api.investigatexm.com`. Browser documentation and client: 
 
 Requests to the public API are processed on the operator's server and pass through its reverse proxy and CDN, where requests (including their coordinates) may be logged like any other web request. To keep planned field coordinates local, run the identical calculation with the Docker container described above. NASA Earthdata credentials are needed only for the one-time data download; after that, the container needs no outbound requests to answer API requests.
 
+## Logging
+
+The API writes one JSON request record to stdout through uvicorn's logging setup:
+UTC timestamp, client IP address, method, route path without query strings, HTTP
+status, duration in milliseconds, response byte count and User-Agent (at most 256
+printable characters). Unknown paths use `/<unmatched>`. Bulk records also include
+the number of fields when an array was parsed. Failures include a fixed error
+category, including failed bulk items. Coordinates, query strings, request bodies,
+results and exception values are never logged. Internal errors retain traceback
+frame locations without source lines or exception messages. Startup logs describe
+data preparation, without calculation outputs. The separate `calc` CLI prints its
+requested calculation result.
+
+`MU_TRUSTED_PROXY_HEADERS=0` is the default: the client address is the socket peer.
+Set it to `1` only when the container is reachable solely through a trusted proxy
+that replaces client-supplied forwarding headers. It uses `CF-Connecting-IP` when
+present, otherwise the first `X-Forwarded-For` entry. Invalid IP values fall back to
+the socket peer. Header control characters are removed before logging.
+
+Reverse proxies and CDNs keep their own logs, which the container cannot control.
+GET query strings are visible to them, so POST can be preferred. Operators can
+disable or shorten the proxy's access log to exclude query strings.
+
 Points are strings `"latitude,longitude"` or objects `{"lat":52.324297,"lng":10.182664}`. Exactly three distinct points must form a nonzero spherical triangle. Latitude is -90..90; longitude is -180..180. Coordinates round half-up to six decimal places before calculation.
 
 `POST /getMU` accepts:

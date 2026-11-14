@@ -34,9 +34,14 @@ def main():
         print(json.dumps(dict(calculate(grump, sys.argv[2:]), model=MODEL)))
     else:
         import uvicorn
+        from copy import deepcopy
+
+        log_config = deepcopy(uvicorn.config.LOGGING_CONFIG)
+        log_config["handlers"]["default"]["stream"] = "ext://sys.stdout"
 
         uvicorn.run(
-            "mu_calculator.api:app", host="0.0.0.0", port=8000, access_log=False
+            "mu_calculator.api:app", host="0.0.0.0", port=8000, access_log=False,
+            proxy_headers=False, log_config=log_config
         )
 
 

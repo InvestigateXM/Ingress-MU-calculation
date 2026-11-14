@@ -4,6 +4,9 @@ import asyncio
 from contextlib import asynccontextmanager
 import json
 import logging
+import ipaddress
+import traceback
+from datetime import datetime, timezone
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -18,6 +21,7 @@ from .tables import ensure_tables, max_level
 BODY_LIMIT = int(os.environ.get("MU_BODY_LIMIT", 32768))
 BULK_LIMIT = int(os.environ.get("MU_BULK_LIMIT", 50))
 TIME_BUDGET = float(os.environ.get("MU_TIME_BUDGET", 20))
+TRUSTED_PROXY_HEADERS = os.environ.get("MU_TRUSTED_PROXY_HEADERS", "0").lower() in ("1", "true")
 SELF_TEST = ["52.324297,10.182664", "52.244048,10.167482", "52.295984,10.231064"]
 # Serialize calculations: one bounded worker owns the density cache.
 executor = ThreadPoolExecutor(max_workers=1)
@@ -30,9 +34,13 @@ async def lifespan(app):
     app.state.grump.density_table = await asyncio.to_thread(
         ensure_tables, app.state.grump.folder
     )
-    if not app.state.grump.r or calculate(app.state.grump, SELF_TEST)["mu"] != 3046:
+    try:
+        self_test_ok = bool(app.state.grump.r) and calculate(app.state.grump, SELF_TEST)["mu"] == 3046
+    except Exception:
+        self_test_ok = False
+    if not self_test_ok:
         raise RuntimeError(
-            "Population data startup self-test failed (expected 3046 MU)."
+            "Population data startup self-test failed."
         )
     yield
 
@@ -86,13 +94,20 @@ async def http_error(request, exception):
 
 @app.exception_handler(BodyTooLarge)
 async def too_large(request, exception):
+    request.scope["mu_error"] = "too_large"
     return error("Request body exceeds limit.", 413)
 
 
 @app.exception_handler(Exception)
 async def unexpected(request, exception):
-    logging.exception("Request failed", exc_info=exception)
-    # This handler runs outside the CORS middleware, so add the header here.
+    # Frame locations only: exception messages, chained exceptions and source
+    # lines can contain input. Never pass the original exception to a logger.
+    frames = traceback.extract_tb(exception.__traceback__)
+    logging.getLogger("uvicorn.error").error(
+        "Request failed: internal\nTraceback (frame locations only):\n%s",
+        "\n".join(f"  {frame.filename}:{frame.lineno} in {frame.name}" for frame in frames),
+    )
+    # The request logger catches outside CORS, so add the header here.
     return error("Calculation failed.", 500, headers={"Access-Control-Allow-Origin": "*"})
 
 
@@ -104,8 +119,10 @@ async def payload(request):
     try:
         value = json.loads(await request.body(), parse_constant=reject_constant)
     except (ValueError, RecursionError):
+        request.scope["mu_error"] = "malformed_json"
         raise ValueError("Malformed JSON.") from None
     if not isinstance(value, dict):
+        request.scope["mu_error"] = "invalid_payload"
         raise ValueError("Expected a JSON object.")
     return value
 
@@ -177,8 +194,10 @@ async def get_mu(request: Request):
             lambda: result(app.state.grump, body.get("coordinates"), detail), deadline
         )
     except ValueError as exception:
+        request.scope.setdefault("mu_error", "invalid_coordinates")
         return error(str(exception))
     except TimeoutError:
+        request.scope["mu_error"] = "deadline"
         return error("deadline exceeded", 504)
 
 
@@ -188,12 +207,16 @@ async def get_bulk(request: Request):
     try:
         body = await payload(request)
         fields = body.get("fields")
+        if isinstance(fields, list):
+            request.scope["mu_fields"] = len(fields)
         if not isinstance(fields, list) or not 1 <= len(fields) <= BULK_LIMIT:
+            request.scope["mu_error"] = "invalid_payload"
             raise ValueError(f"fields must be an array of 1 to {BULK_LIMIT} triangles.")
         detail = detail_flag(
             request.query_params.get("detail", body.get("detail", False))
         )
     except ValueError as exception:
+        request.scope.setdefault("mu_error", "invalid_coordinates")
         return error(str(exception))
     results = []
     for index, field in enumerate(fields):
@@ -208,8 +231,75 @@ async def get_bulk(request: Request):
             calculated.pop("model")
             item.update(ok=True, **calculated)
         except ValueError as exception:
+            request.scope["mu_error"] = "invalid_coordinates"
             item.update(ok=False, error=str(exception))
         except TimeoutError:
+            request.scope["mu_error"] = "deadline"
             item.update(ok=False, error="deadline exceeded")
         results.append(item)
     return {"count": len(results), "results": results, "model": MODEL}
+
+
+def clean_header(value):
+    return "".join(c for c in value if c.isprintable())[:256]
+
+
+class RequestLog:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        start = time.monotonic()
+        status, size, started = 500, 0, False
+        request = Request(scope)
+        peer = scope.get("client")
+        client = peer[0] if peer else "unknown"
+        if TRUSTED_PROXY_HEADERS:
+            candidate = request.headers.get("cf-connecting-ip")
+            if candidate is None:
+                candidate = request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+            try:
+                client = str(ipaddress.ip_address(candidate))
+            except ValueError:
+                pass
+
+        async def logged_send(message):
+            nonlocal status, size, started
+            if message["type"] == "http.response.start":
+                status = message["status"]
+                started = True
+            elif message["type"] == "http.response.body":
+                size += len(message.get("body", b""))
+            await send(message)
+
+        try:
+            await self.app(scope, receive, logged_send)
+        except Exception as exception:
+            scope["mu_error"] = "internal"
+            response = await unexpected(request, exception)
+            if not started:
+                await response(scope, receive, logged_send)
+        finally:
+            category = scope.get("mu_error")
+            if category is None and status >= 400:
+                category = {404: "not_found", 413: "too_large", 422: "validation", 504: "deadline"}.get(status, "http_error")
+            # Route templates prevent arbitrary unknown paths from logging input.
+            route = scope.get("route")
+            record = dict(
+                timestamp=datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+                client=clean_header(client), method=clean_header(scope["method"]),
+                path=getattr(route, "path", "/<unmatched>"), status=status,
+                duration_ms=round((time.monotonic() - start) * 1000, 3),
+                response_bytes=size,
+                user_agent=clean_header(request.headers.get("user-agent", "")),
+            )
+            if "mu_fields" in scope:
+                record["fields"] = scope["mu_fields"]
+            if category:
+                record["error"] = category
+            logging.getLogger("uvicorn.error").info(json.dumps(record, ensure_ascii=True))
+
+
+app.add_middleware(RequestLog)

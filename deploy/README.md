@@ -41,3 +41,15 @@ After changing `.env`, recreate with `docker compose up -d --force-recreate`.
 Field size has no sample cap. Detail responses include all cells and regions and
 may be several MB. Keep proxy response limits large enough; bulk deadlines still
 include the total time for all fields and queueing.
+
+The API request log excludes query strings, bodies, coordinates and results.
+`MU_TRUSTED_PROXY_HEADERS` defaults to `0` (socket peer). Enable it only when the
+container is reachable solely through a trusted proxy that replaces forwarding
+headers. It selects a valid `CF-Connecting-IP`, otherwise the first
+`X-Forwarded-For` entry when CF is absent; invalid values use the peer.
+
+Proxies and CDNs keep separate logs; GET query strings are visible to them.
+POST can be preferred. For nginx-based proxies, disable this host's access log
+with `access_log off;` in its `server` block, or select a `log_format` using
+`$request_method` and `$uri` without `$request` or `$args`. Configure CDN logging
+separately; container settings cannot control it.

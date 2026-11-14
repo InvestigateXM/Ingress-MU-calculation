@@ -7,6 +7,8 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     environment:
+      # Enable only when reachable solely through a trusted proxy.
+      MU_TRUSTED_PROXY_HEADERS: ${MU_TRUSTED_PROXY_HEADERS:-0}
       MU_TABLE_MAX_LEVEL: ${MU_TABLE_MAX_LEVEL:-6}
       MU_TABLE_WORKERS: ${MU_TABLE_WORKERS:-6}
       EARTHDATA_USERNAME: ${EARTHDATA_USERNAME:-}

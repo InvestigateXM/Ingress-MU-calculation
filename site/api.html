@@ -24,13 +24,14 @@
   <li>Base URL: <code>https://api.investigatexm.com</code></li>
   <li>No API key and no registration.</li>
   <li>Requests and responses are JSON.</li>
+  <li>Clients should send a descriptive <code>User-Agent</code> header; some default library user agents are rejected at the network edge.</li>
   <li>CORS is open (<code>Access-Control-Allow-Origin: *</code>), so the API can be called from a browser on any site.</li>
   <li>Every calculation response contains <code>model</code>, an identifier of the calculation model, currently <code>grump2000-s2java2011-min6-l6min1</code>.</li>
 </ul>
 <p class="hint">Results for very large fields (from a few hundred thousand km²) are likely but not confirmed to be correct in every case.</p>
 
 <h2>Run it yourself</h2>
-<p>Requests to the public API are processed on the operator's server and pass through its reverse proxy and CDN, where requests (including their coordinates) may be logged like any other web request.</p>
+<p>The API software's own request log records time, client address, user agent, method, path, status and duration, but no coordinates and no results; proxies and CDNs in front of it keep their own logs.</p>
 <p>To keep planned field coordinates local, run the identical calculation with the Docker container. Only NASA Earthdata credentials are needed for the one-time population data download; after that, the container needs no outbound requests to answer API requests. See the <a href="https://github.com/InvestigateXM/Ingress-MU-calculation#readme">README on GitHub</a> for setup, configuration and source code.</p>
 
 <h2>Endpoints</h2>
