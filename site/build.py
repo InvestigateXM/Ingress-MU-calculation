@@ -12,7 +12,7 @@ import markdown
 
 SITE = Path(__file__).resolve().parent
 OUT = SITE / "_site"
-STATIC = ["index.html", "how-it-works.html", "how-it-works.js", "style.css", "CNAME"]
+STATIC = ["index.html", "how-it-works.html", "api.html", "how-it-works.js", "style.css", "CNAME"]
 
 TEMPLATE = """<!doctype html>
 <html lang="en">
@@ -28,6 +28,7 @@ TEMPLATE = """<!doctype html>
   <a href="./">Calculator</a>
   <a href="how-it-works.html">How it works</a>
   <a href="method.html" aria-current="page">Method</a>
+  <a href="api.html">API</a>
   <a href="https://github.com/InvestigateXM/Ingress-MU-calculation">GitHub</a>
 </header>
 <main>

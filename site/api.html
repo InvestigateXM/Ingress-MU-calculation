@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>API - Ingress MU calculator</title>
+<meta name="description" content="Public HTTP API that returns the Ingress Mind Units (MU) of a control field from three portal coordinates: endpoints, parameters, limits, errors and examples.">
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+  <span class="site">Ingress MU calculator</span>
+  <a href="./">Calculator</a>
+  <a href="how-it-works.html">How it works</a>
+  <a href="method.html">Method</a>
+  <a href="api.html" aria-current="page">API</a>
+  <a href="https://github.com/InvestigateXM/Ingress-MU-calculation">GitHub</a>
+</header>
+<main>
+<h1>API</h1>
+<p>The calculation of this site is available as a public HTTP API. Given three portal coordinates, it returns the Mind Units (MU) of the control field they span. It is the same calculation as on the <a href="./">calculator</a> page, as defined on the <a href="method.html">Method</a> page; the calculator page itself uses this API.</p>
+<ul>
+  <li>Base URL: <code>https://api.investigatexm.com</code></li>
+  <li>No API key and no registration.</li>
+  <li>Requests and responses are JSON.</li>
+  <li>CORS is open (<code>Access-Control-Allow-Origin: *</code>), so the API can be called from a browser on any site.</li>
+  <li>Every response contains <code>model</code>, an identifier of the calculation model, currently <code>grump2000-s2java2011-min6-l6min1</code>.</li>
+</ul>
+<p class="hint">Results for very large fields (from a few hundred thousand km²) are likely but not confirmed to be correct in every case.</p>
+
+<h2>Endpoints</h2>
+<table>
+  <thead><tr><th>Endpoint</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td><code>GET /getMU</code></td><td>MU of one field; the coordinates are query parameters.</td></tr>
+    <tr><td><code>POST /getMU</code></td><td>MU of one field; the coordinates are in a JSON body.</td></tr>
+    <tr><td><code>POST /getMUbulk</code></td><td>MU of 1 to 50 fields in one request.</td></tr>
+    <tr><td><code>GET /health</code></td><td>Service status.</td></tr>
+    <tr><td><code>GET /</code></td><td>Short JSON description of the service.</td></tr>
+    <tr><td><code>GET /docs</code></td><td>Generated interactive API documentation (OpenAPI).</td></tr>
+  </tbody>
+</table>
+
+<h2>Coordinates</h2>
+<ul>
+  <li>A point is a string <code>"latitude,longitude"</code> in decimal degrees, for example <code>"52.324297,10.182664"</code> (spaces around the numbers are allowed), or, in JSON bodies only, an object <code>{"lat": 52.324297, "lng": 10.182664}</code> with exactly these two keys.</li>
+  <li>Latitude is -90 to 90, longitude is -180 to 180.</li>
+  <li>Coordinates are rounded half up to six decimal places before the calculation. The <code>coordinates</code> in the response show the rounded values.</li>
+  <li>A field has exactly three points. They must differ after rounding and form a triangle on the sphere with nonzero area; its edges are great-circle arcs. The order of the points does not matter.</li>
+  <li>There is no size limit for the field; every valid triangle is accepted within the time budget (see <a href="#limits">Limits</a>).</li>
+</ul>
+
+<h2>Single field: <code>GET /getMU</code></h2>
+<p>Pass the three points as repeated <code>c=latitude,longitude</code> parameters. <code>detail=1</code> is optional (see <a href="#detail">Detail</a>). In the query string, only <code>1</code> and <code>0</code> are accepted as values of <code>detail</code>.</p>
+<pre><code>GET /getMU?c=52.324297,10.182664&amp;c=52.244048,10.167482&amp;c=52.295984,10.231064</code></pre>
+<p>Response (HTTP 200):</p>
+<pre><code>{
+  "mu": 3046,
+  "area_km2": 16.311625962717194,
+  "coordinates": ["52.324297, 10.182664", "52.244048, 10.167482", "52.295984, 10.231064"],
+  "model": "grump2000-s2java2011-min6-l6min1"
+}</code></pre>
+<table>
+  <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>mu</code></td><td>Mind Units of the field, an integer (rounded once, half up, as described on the <a href="method.html">Method</a> page).</td></tr>
+    <tr><td><code>area_km2</code></td><td>Spherical area of the field in km² (earth radius 6371.01 km).</td></tr>
+    <tr><td><code>coordinates</code></td><td>The three points after rounding, as <code>"latitude, longitude"</code> strings with six decimals, in the order given.</td></tr>
+    <tr><td><code>model</code></td><td>Identifier of the calculation model.</td></tr>
+  </tbody>
+</table>
+
+<h3 id="detail">Detail</h3>
+<p><code>detail=1</code> in the query string (on both <code>GET</code> and <code>POST</code>) or <code>"detail": true</code> in a JSON body adds the intermediate results. The query parameter takes precedence over the body. In a JSON body, <code>true</code>, <code>false</code>, <code>1</code> and <code>0</code> are accepted; without the flag the fields below are omitted.</p>
+<table>
+  <thead><tr><th>Field</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><code>raw_mu</code></td><td>Sum over all covering cells of overlap area times density, before the regional minimum of 1 MU.</td></tr>
+    <tr><td><code>regional_total_mu</code></td><td>Total after the regional minimum, before the final rounding to <code>mu</code>.</td></tr>
+    <tr><td><code>regions[]</code></td><td>One entry per S2 level-6 region that contains covering cells of the field: <code>s2_token</code> (region cell), <code>raw_mu</code> (sum of its cells) and <code>minimum_applied_mu</code> (that sum, but at least 1).</td></tr>
+    <tr><td><code>cells[]</code></td><td>One entry per covering cell: <code>s2_id</code> (S2 cell id as a decimal string), <code>s2_token</code> (the same id as hexadecimal token), <code>level</code> (S2 level), <code>overlap_km2</code> (area of the field inside the cell), <code>density</code> (MU per km² of the cell) and <code>raw_mu</code> (<code>overlap_km2</code> times <code>density</code>).</td></tr>
+  </tbody>
+</table>
+<p>Example response of <code>GET /getMU?…&amp;detail=1</code> for the same field. The <code>cells</code> array is shortened here (<code>…</code>); the real response contains all 19 cells.</p>
+<pre><code>{
+  "coordinates": [
+    "52.324297, 10.182664",
+    "52.244048, 10.167482",
+    "52.295984, 10.231064"
+  ],
+  "mu": 3046,
+  "area_km2": 16.311625962717194,
+  "raw_mu": 3045.926491022803,
+  "regional_total_mu": 3045.9264910228035,
+  "regions": [
+    {
+      "s2_token": "47a5",
+      "raw_mu": 126.60537791261866,
+      "minimum_applied_mu": 126.60537791261866
+    },
+    {
+      "s2_token": "47af",
+      "raw_mu": 2310.924092396028,
+      "minimum_applied_mu": 2310.924092396028
+    },
+    {
+      "s2_token": "47b1",
+      "raw_mu": 578.3064609347751,
+      "minimum_applied_mu": 578.3064609347751
+    },
+    {
+      "s2_token": "47bb",
+      "raw_mu": 30.090559779381714,
+      "minimum_applied_mu": 30.090559779381714
+    }
+  ],
+  "cells": [
+    {
+      "s2_id": "5162626349935886336",
+      "s2_token": "47a5555",
+      "level": 12,
+      "overlap_km2": 1.115324194111231,
+      "density": 113.51441901922226,
+      "raw_mu": 126.60537791261866
+    },
+    {
+      "s2_id": "5165626728189526016",
+      "s2_token": "47affe24",
+      "level": 13,
+      "overlap_km2": 0.007949411586318528,
+      "density": 219.47376251220703,
+      "raw_mu": 1.7446872706074597
+    },
+    …
+  ],
+  "model": "grump2000-s2java2011-min6-l6min1"
+}</code></pre>
+<p>Detail contains every covering cell and region, without truncation. Responses for very large fields can be several MB.</p>
+
+<h2>Single field: <code>POST /getMU</code></h2>
+<p>JSON body with <code>coordinates</code> (an array of three points, strings or <code>{lat, lng}</code> objects, which may be mixed) and optional <code>detail</code>. The response is the same as for <code>GET</code>.</p>
+<pre><code>POST /getMU
+Content-Type: application/json
+
+{
+  "coordinates": [
+    {"lat": 52.324297, "lng": 10.182664},
+    "52.244048,10.167482",
+    {"lat": 52.295984, "lng": 10.231064}
+  ],
+  "detail": false
+}</code></pre>
+<p>A <code>POST</code> with <code>Content-Type: application/json</code> from a browser on another origin triggers a CORS preflight request, which the API answers.</p>
+
+<h2>Several fields: <code>POST /getMUbulk</code></h2>
+<p>JSON body with <code>fields</code>, an array of 1 to 50 fields, and optional <code>detail</code> (same rules as above, applied to all fields). Each field is either an array of three points or an object with <code>coordinates</code> and an optional <code>id</code>. An <code>id</code> can be any JSON value and is returned unchanged.</p>
+<pre><code>POST /getMUbulk
+Content-Type: application/json
+
+{
+  "fields": [
+    {"id": "field-1", "coordinates": ["52.324297,10.182664", "52.244048,10.167482", "52.295984,10.231064"]},
+    ["0,0", "0,0", "0,0"]
+  ]
+}</code></pre>
+<p>Response (HTTP 200):</p>
+<pre><code>{
+  "count": 2,
+  "results": [
+    {"index": 0, "id": "field-1", "ok": true, "mu": 3046, "area_km2": 16.311625962717194, "coordinates": ["52.324297, 10.182664", "52.244048, 10.167482", "52.295984, 10.231064"]},
+    {"index": 1, "ok": false, "error": "The three coordinates must be distinct at six decimal places."}
+  ],
+  "model": "grump2000-s2java2011-min6-l6min1"
+}</code></pre>
+<ul>
+  <li><code>results</code> has one entry per field, in the order of the request. <code>index</code> is the position in <code>fields</code>; <code>id</code> is present only if it was supplied.</li>
+  <li>A successful entry has <code>"ok": true</code> and the fields of a single result (with the detail fields if requested), without <code>model</code>, which appears once at the top level.</li>
+  <li>An invalid field does not affect the others: its entry has <code>"ok": false</code> and an <code>error</code> message, and the HTTP status stays 200.</li>
+  <li>Results are per field. They are not added up, and overlapping fields are not merged.</li>
+  <li>A request that is invalid as a whole (malformed JSON, <code>fields</code> missing or not 1 to 50 entries, invalid <code>detail</code>) fails with a single error response.</li>
+</ul>
+
+<h2><code>GET /health</code> and <code>GET /</code></h2>
+<pre><code>GET /health
+{"ok":true,"rasters":234,"model":"grump2000-s2java2011-min6-l6min1","table_max_level":11,"table_levels_ready":[6,7,8,9,10,11]}
+
+GET /
+{"description":"Independent empirical Ingress MU calculator.","docs":"https://mu.investigatexm.com","api_docs":"/docs","table_max_level":11,"model":"grump2000-s2java2011-min6-l6min1"}</code></pre>
+<p><code>ok</code> is <code>true</code> once the service has started and passed its start-up self-test. The other fields of <code>/health</code> and <code>/</code> describe the server's data preparation and can change.</p>
+
+<h2 id="limits">Limits</h2>
+<table>
+  <thead><tr><th>Limit</th><th>Value</th></tr></thead>
+  <tbody>
+    <tr><td>Points per field</td><td>exactly 3</td></tr>
+    <tr><td>Fields per bulk request</td><td>1 to 50 (otherwise status 400)</td></tr>
+    <tr><td>Request body</td><td>32,768 bytes (larger bodies get status 413)</td></tr>
+    <tr><td>Time per request</td><td>20 seconds, including the time a request waits for other calculations (calculations run one at a time). A single request that exceeds it gets status 504; in a bulk request the fields that were not finished in time get <code>"ok": false</code> and <code>"error": "deadline exceeded"</code>.</td></tr>
+  </tbody>
+</table>
+
+<h2>Errors</h2>
+<p>Errors are JSON objects with an <code>error</code> message and <code>model</code>, for example for <code>GET /getMU?c=91,10&amp;c=52.244048,10.167482&amp;c=52.295984,10.231064</code> (status 400):</p>
+<pre><code>{"error":"Coordinate 1: latitude must be -90 to 90; longitude -180 to 180.","model":"grump2000-s2java2011-min6-l6min1"}</code></pre>
+<table>
+  <thead><tr><th>Status</th><th>Cause</th><th><code>error</code></th></tr></thead>
+  <tbody>
+    <tr><td>400</td><td>Latitude or longitude out of range</td><td><code>Coordinate 1: latitude must be -90 to 90; longitude -180 to 180.</code></td></tr>
+    <tr><td>400</td><td>Not a number</td><td><code>Coordinate 1: use decimal numbers, such as 52.245944, 10.539506.</code></td></tr>
+    <tr><td>400</td><td>Not two comma-separated parts, or a <code>{lat, lng}</code> object with other keys</td><td><code>Coordinate 1: use latitude, longitude.</code></td></tr>
+    <tr><td>400</td><td>Not exactly three points</td><td><code>Supply exactly three coordinates.</code></td></tr>
+    <tr><td>400</td><td>Points equal after rounding</td><td><code>The three coordinates must be distinct at six decimal places.</code></td></tr>
+    <tr><td>400</td><td>Points on one great circle</td><td><code>The triangle must have a nonzero area.</code></td></tr>
+    <tr><td>400</td><td>Invalid <code>detail</code> value</td><td><code>detail must be true, false, 1 or 0.</code></td></tr>
+    <tr><td>400</td><td>Malformed JSON body</td><td><code>Malformed JSON.</code></td></tr>
+    <tr><td>400</td><td>JSON body is not an object</td><td><code>Expected a JSON object.</code></td></tr>
+    <tr><td>400</td><td>Bulk request without 1 to 50 fields</td><td><code>fields must be an array of 1 to 50 triangles.</code></td></tr>
+    <tr><td>404</td><td>Unknown path</td><td><code>Not Found</code></td></tr>
+    <tr><td>405</td><td>Method not allowed for the path</td><td><code>Method Not Allowed</code></td></tr>
+    <tr><td>413</td><td>Body larger than 32,768 bytes</td><td><code>Request body exceeds limit.</code></td></tr>
+    <tr><td>500</td><td>Unexpected failure</td><td><code>Calculation failed.</code></td></tr>
+    <tr><td>504</td><td>Time budget exceeded</td><td><code>deadline exceeded</code></td></tr>
+  </tbody>
+</table>
+<p>In a bulk request, coordinate errors are reported per field (status 200, see above). Responses produced by the network in front of the API, for example when it refuses a client, are not necessarily JSON.</p>
+
+<h2>Examples</h2>
+<p>All examples use the same field. Its MU is 3046.</p>
+<h3>curl</h3>
+<pre><code>curl "https://api.investigatexm.com/getMU?c=52.324297,10.182664&amp;c=52.244048,10.167482&amp;c=52.295984,10.231064"</code></pre>
+<pre><code>curl -X POST https://api.investigatexm.com/getMU \
+  -H "Content-Type: application/json" \
+  -d '{"coordinates":["52.324297,10.182664","52.244048,10.167482","52.295984,10.231064"]}'</code></pre>
+<p>Both print:</p>
+<pre><code>{"mu":3046,"area_km2":16.311625962717194,"coordinates":["52.324297, 10.182664","52.244048, 10.167482","52.295984, 10.231064"],"model":"grump2000-s2java2011-min6-l6min1"}</code></pre>
+<pre><code>curl -X POST https://api.investigatexm.com/getMUbulk \
+  -H "Content-Type: application/json" \
+  -d '{"fields":[{"id":"field-1","coordinates":["52.324297,10.182664","52.244048,10.167482","52.295984,10.231064"]},["0,0","0,0","0,0"]]}'</code></pre>
+<p>This prints the bulk response shown above, on one line.</p>
+
+<h3>JavaScript (browser or Node.js 18+, as a module)</h3>
+<pre><code>const res = await fetch('https://api.investigatexm.com/getMU', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    coordinates: [
+      { lat: 52.324297, lng: 10.182664 },
+      { lat: 52.244048, lng: 10.167482 },
+      { lat: 52.295984, lng: 10.231064 },
+    ],
+  }),
+});
+const data = await res.json();
+if (!res.ok) throw new Error(data.error);
+console.log(data.mu, data.area_km2); // 3046 16.311625962717194</code></pre>
+
+<h3>Python</h3>
+<pre><code>import json
+import urllib.request
+
+body = json.dumps({"coordinates": [
+    "52.324297,10.182664",
+    "52.244048,10.167482",
+    "52.295984,10.231064",
+]}).encode()
+request = urllib.request.Request(
+    "https://api.investigatexm.com/getMU",
+    data=body,
+    headers={
+        "Content-Type": "application/json",
+        "User-Agent": "mu-api-example/1.0",
+    },
+)
+with urllib.request.urlopen(request, timeout=30) as response:
+    data = json.load(response)
+print(data["mu"], data["area_km2"])  # 3046 16.311625962717194</code></pre>
+<p>The example sets its own <code>User-Agent</code>: requests with the default <code>Python-urllib</code> user agent are refused with status 403 (<code>error code: 1010</code>) by the network in front of the API. A failed request raises <code>urllib.error.HTTPError</code>; its body is the JSON error response, readable with <code>json.load(error)</code>.</p>
+
+<h2>Run it yourself</h2>
+<p>The same API is available as a Docker container, built from the project's repository. It needs only NASA Earthdata credentials: on first start it downloads the population data and prepares its tables. See the <a href="https://github.com/InvestigateXM/Ingress-MU-calculation#readme">README on GitHub</a> for setup, configuration and the source code.</p>
+
+<h2>Fair use</h2>
+<p>The API is free to use and provided without a guarantee of availability. Please keep the request rate moderate, and use <code>/getMUbulk</code> instead of many single requests when several fields are needed.</p>
+</main>
+<footer>
+  Independent reconstruction; not affiliated with or endorsed by Niantic. Population data: Global Rural-Urban Mapping Project, Version 1 (GRUMP v1), CIESIN / NASA SEDAC. Source and API description: <a href="https://github.com/InvestigateXM/Ingress-MU-calculation">GitHub</a>.
+</footer>
+</body>
+</html>
