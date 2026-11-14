@@ -81,8 +81,13 @@ class JHeap:
         return res
 
 
-def cover(pts_e6, max_cells=20, max_level=13, min_level=6, level_mod=1):
-    """Cover a triangle with the 2011 Java candidate queue ordering."""
+def cover(pts_e6, max_cells=20, max_level=13, min_level=6, level_mod=1, observer=None):
+    """Cover a triangle with the 2011 Java candidate queue ordering.
+
+    observer, if given, is called as observer(event, **data) while the covering
+    is built (events: start, push, poll, merge, result, normalize). It only
+    reports; the result does not depend on it.
+    """
     R = Region(pts_e6)
     result = []
     pq = JHeap()
@@ -94,16 +99,21 @@ def cover(pts_e6, max_cells=20, max_level=13, min_level=6, level_mod=1):
             return None
         lvl = cid.level()
         terminal = False
+        why = None
         if lvl >= min_level:
             if lvl + level_mod > max_level or R.contains(cell):
                 terminal = True
-        return dict(cid=cid, cell=cell, terminal=terminal, children=[], nterm=0)
+                if observer:
+                    why = "inside" if R.contains(cell) else "max_level"
+        return dict(cid=cid, cell=cell, terminal=terminal, children=[], nterm=0, why=why)
 
     def add(cand):
         if cand is None:
             return 0
         if cand["terminal"]:
             result.append(cand["cid"])
+            if observer:
+                observer("result", cid=cand["cid"].id(), why=cand["why"])
             return 1
         num_levels = 1 if cand["cid"].level() < min_level else level_mod
 
@@ -123,11 +133,18 @@ def cover(pts_e6, max_cells=20, max_level=13, min_level=6, level_mod=1):
             return 0
         if nterm == 1 << mcs and cand["cid"].level() >= min_level:
             cand["terminal"] = True
+            if observer:
+                cand["why"] = "merged"
+                observer("merge", cid=cand["cid"].id(),
+                         children=[c["cid"].id() for c in cand["children"]])
             return add(cand)
         priority = -(
             ((cand["cid"].level() << mcs) + cand["num_children"] << mcs) + nterm
         )
         pq.push((priority, cand))
+        if observer:
+            observer("push", cid=cand["cid"].id(), priority=priority,
+                     children=[(c["cid"].id(), c["terminal"]) for c in cand["children"]])
         return 0
 
     started = False
@@ -140,26 +157,44 @@ def cover(pts_e6, max_cells=20, max_level=13, min_level=6, level_mod=1):
         if level > 0:
             axis = cap.center()
             leaf = s2.S2CellId(axis)
+            if observer:
+                observer("start", mode="neighbors", level=level, angle=ang,
+                         x=KMINWIDTH / (2 * ang), leaf=leaf.id(),
+                         initial=[c.id() for c in leaf.GetVertexNeighbors(level)])
             for cid in leaf.GetVertexNeighbors(level):
                 add(new_candidate(cid))
             started = True
     if not started:
+        if observer:
+            observer("start", mode="faces", level=0, angle=None, x=None, leaf=None,
+                     initial=list(range(6)))
         for face in range(6):
             add(new_candidate(s2.S2CellId.FromFacePosLevel(face, 0, 0)))
     while pq:
-        cand = pq.pop()[1]
+        priority, cand = pq.pop()
         n = len(cand["children"])
-        if (
+        expand = (
             cand["cid"].level() < min_level
             or n == 1
             or len(result) + len(pq) + n <= max_cells
-        ):
+        )
+        if observer:
+            observer("poll", cid=cand["cid"].id(), priority=priority,
+                     children=[(c["cid"].id(), c["terminal"]) for c in cand["children"]],
+                     nterm=cand["nterm"], result=len(result), queue=len(pq),
+                     expand=expand,
+                     forced=cand["cid"].level() < min_level)
+        if expand:
             for ch in cand["children"]:
                 add(ch)
         else:
             cand["terminal"] = True
+            cand["why"] = "budget"
             add(cand)
-    return normalize([c.id() for c in result], min_level, level_mod)
+    final = normalize([c.id() for c in result], min_level, level_mod)
+    if observer:
+        observer("normalize", before=[c.id() for c in result], after=final)
+    return final
 
 
 def normalize(ids, min_level=0, level_mod=1):

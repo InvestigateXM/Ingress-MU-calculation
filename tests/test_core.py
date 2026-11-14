@@ -145,3 +145,29 @@ def test_bulk_interior_overlap_matches_scalar():
         np.array([c[2] for c in scalar]), rel=1e-10, abs=1e-8
     )
     assert sum(c[2] for c in fast) == pytest.approx(area, rel=1e-10)
+
+
+def test_observer_does_not_change_the_covering():
+    import json
+    import random
+    from pathlib import Path
+
+    triangles = [
+        [tuple(p) for p in f["points"]]
+        for f in json.loads(Path(__file__).with_name("triangles.json").read_text())
+    ]
+    triangles.append([(-9011934, 13410663), (22905822, 33272151), (-596665, 35028782)])
+    rng = random.Random(7)
+    for _ in range(40):
+        lat, lng, size = rng.uniform(-70, 70), rng.uniform(-179, 179), 10 ** rng.uniform(-3, 0.5)
+        triangles.append([
+            (int((lat + rng.uniform(-size, size)) * 1e6), int((lng + rng.uniform(-size, size)) * 1e6))
+            for _ in range(3)
+        ])
+    for pts in triangles:
+        events = []
+        observed = cover(pts, observer=lambda event, **data: events.append((event, data)))
+        assert observed == cover(pts)
+        assert events[-1][0] == "normalize" and events[-1][1]["after"] == observed
+        polls = [d for e, d in events if e == "poll"]
+        assert all(d["forced"] or d["expand"] or len(d["children"]) > 1 for d in polls)
