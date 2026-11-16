@@ -38,7 +38,7 @@ from anim.common import DATA, Calc, RecordingCalc, ReplayCalc, ROOT  # noqa: E40
 # ---------------------------------------------------------------- main
 
 # One module per trace in tools/anim/, each with build(calc) -> trace dict. Order = page order.
-NAMES = ["a0", "a2", "a5g", "a5", "a6", "a3", "a4", "a1g", "a1"]
+NAMES = ["a6", "a1g", "a1", "a0", "a2", "a5g", "a5", "a3", "a4"]
 BUILDERS = [(n, lambda calc, n=n: importlib.import_module(f"anim.{n}").build(calc)) for n in NAMES]
 
 

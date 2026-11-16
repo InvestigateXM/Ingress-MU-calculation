@@ -6,6 +6,15 @@ from .common import _clip, _normals  # noqa: F401
 
 # ---------------------------------------------------------------- animation 1
 
+def _head(tip, frm, length, half):
+    """Triangle (arrowhead) with its tip at `tip`, pointing away from `frm`."""
+    dx, dy = tip[0] - frm[0], tip[1] - frm[1]
+    d = math.hypot(dx, dy)
+    ux, uy = dx / d, dy / d
+    bx, by = tip[0] - ux * length, tip[1] - uy * length
+    return [list(tip), [bx - uy * half, by + ux * half], [bx + uy * half, by - ux * half]]
+
+
 def build_a1(calc):
     g = calc.g
     c13 = cid_of(A1_CELL)
@@ -71,7 +80,15 @@ def build_a1(calc):
         tr.dot(f"d13:{i}", p, "d13")
         tr.dot(f"sh:{i}", sp, "sh")
         tr.line(f"sl:{i}", p, sp, "sl")
-        tr.line(f"ln:{i}", sp, proj.ll(90 - (key[1] + 0.5) * D, -180 + (key[0] + 0.5) * D), "ln")
+        ctr = proj.ll(90 - (key[1] + 0.5) * D, -180 + (key[0] + 0.5) * D)
+        tr.line(f"ln:{i}", sp, ctr, "ln")
+        mv = math.hypot(sp[0] - p[0], sp[1] - p[1])
+        tr.poly(f"ah:{i}", _head(sp, p, 0.16 * mv, 0.065 * mv), "ah")
+        dd = math.hypot(p[0] - ctr[0], p[1] - ctr[1])
+        tip = [p[0] - (p[0] - ctr[0]) / dd * 0.1 * mv, p[1] - (p[1] - ctr[1]) / dd * 0.1 * mv]
+        tr.line(f"mb:{i}", ctr, p, "mb")
+        tr.poly(f"ah2:{i}", _head(tip, ctr, 0.14 * mv, 0.06 * mv), "ah2")
+        tr.text(f"vl:{i}", p, str(round(v13[i].item())), "vl")
         tips[f"d13:{i}"] = tips[f"sh:{i}"] = f"Point {i + 1}: reads pixel {letter[key]}, count {fmt(v13[i].item(), 0)}"
     tr.extra["tips"] = tips
     for k in reads:
@@ -97,31 +114,48 @@ def build_a1(calc):
     tr.legend = {"p:grid": "Pixel of the population map", "p:hl": "The cell", "p:read": "Pixel that is read",
                  "p:unread": "Pixel the cell overlaps but no point reads",
                  "d:dot": "Measuring point", "d:ghost": "Original position",
-                 "d:shift": "Point moved half a pixel up and left"}
+                 "d:shift": "Point moved half a pixel up and left",
+                 "l:move": "Shift to where the game looks", "l:move2": "Count brought back to the point"}
     px_all = [f"px:{k[0]}:{k[1]}" for k in reads]
     tr.step(f"The population map is a grid of pixels, each about {w_km:.2f} km wide and {h_km:.2f} km tall. "
             f"The orange cell, {a13:.2f} km² in size, is tilted and does not line up with them, so it covers parts of several pixels.",
             {"@px": "grid", "c13": "hl"})
     tr.step("Inside the cell the game places the same 16 measuring points, evenly spaced. Hover or focus a point to see which pixel it reads.",
             {"@d13": "dot"})
-    tr.step("Every point is moved half a pixel up and left before the map is read.",
-            {"@d13": "ghost", "@sh": "shift", "@sl": "move"})
-    s = {"@d13": "", "@sl": "", "@ln": "ptr", **{k: "read" for k in px_all}}
+    tr.step("Every point is moved half a pixel up and to the left (the arrows) before the map is read. "
+            "The game does not read the pixel a point lies in. It looks half a pixel up and to the left and reads the pixel it finds there.",
+            {"@d13": "ghost", "@sh": "shift", "@sl": "move", "@ah": "ah"})
+    s = {"@d13": "", "@sl": "", "@ah": "", "@ln": "ptr", **{k: "read" for k in px_all}}
     s.update({f"px:{k[0]}:{k[1]}": "unread" for k in unread})
     s.update({f"lt:{k[0]}:{k[1]}": "b" for k in reads})
     s.update({f"bd:{k[0]}:{k[1]}": "b" for k in reads})
     s.update({f"un:{k[0]}:{k[1]}": "m" for k in unread})
-    tr.step(f"Each moved point reads the pixel it lies in. Six pixels (A to F) are read, and the badges show how many points read each one. "
+    tr.step(f"Each shifted point reads the pixel it now lies in. Six pixels (A to F) are read, and the badges show how many points read each one. "
             f"The cell also overlaps {len(unread)} pixels that no point reads, which are ignored.", s)
     tr.step("Each pixel has a count of people. The table shows, for each of the 16 points, the pixel it reads and that pixel's count.",
             {"@ln": "", **{f"ct:{k[0]}:{k[1]}": "b" for k in reads}}, tb=["samples", 16, None])
+    back = {"@sh": "", "@ln": "", "@lt": "", "@bd": "", "@un": "", "@d13": "dot", "@mb": "move2", "@ah2": "ah2",
+            **{f"px:{k[0]}:{k[1]}": "read" for k in reads}, **{f"px:{k[0]}:{k[1]}": "grid" for k in unread}}
+    tr.step("Now the counts go back. Each point takes the count of the pixel it read (purple arrows) and returns to its original place in the cell.",
+            back, tb=["samples", 16, None])
+    # zoomed view on the cell for the steps with 16 numbers (same map, only magnified)
+    cp = poly_of(c13)
+    zx0, zx1 = min(p[0] for p in cp), max(p[0] for p in cp)
+    zy0, zy1 = min(p[1] for p in cp), max(p[1] for p in cp)
+    zw, zh = (zx1 - zx0) * 1.3, (zy1 - zy0) * 1.3
+    zw, zh = max(zw, zh * 4 / 3), max(zh, zw * 3 / 4)
+    zcx, zcy = (zx0 + zx1) / 2, (zy0 + zy1) / 2
+    zoom = [round(zcx - zw / 2, 3), round(zcy - zh / 2, 3), round(zw, 3), round(zh, 3)]
+    tr.step("Zoomed in on the cell: each number now sits at the original place of its point, the number that point brought back. "
+            "The shift was only where the game looked: the 16 numbers belong to the 16 points inside the cell.",
+            {"@mb": "", "@ah2": "", "@ct": "", "@d13": "", "@vl": "b"}, tb=["samples", 16, None], view=zoom)
     groups = {}
     for k in reads:
         groups.setdefault(round(px13[k], 3), [0, px13[k]])[0] += nread[k]
     terms = " + ".join(f"{m}×{fmt(v, 0)}" for m, v in sorted(groups.values(), key=lambda t: -t[1]))
-    tr.step(f"The density of the cell is the mean of the 16 readings, in MU per km². "
+    tr.step(f"The density of the cell is the mean of these 16 numbers, in MU per km². "
             f"So every spot in this cell counts as about {fmt(d13, 0)} MU per km², whatever is actually inside it.",
-            {}, tb=["samples", 16, None], eq=f"({terms}) / 16 = {fmt(d13, 0)} MU per km²")
+            {}, tb=["samples", 16, None], eq=f"({terms}) / 16 = {fmt(d13, 0)} MU per km²", view=zoom)
     tr.extra["summary"] = [
         ["Cell", A1_CELL], ["Cell area", f"{a13:.4f} km²"], ["Measuring points", "16"], ["Pixels read", str(len(px13))],
         ["Density", fmt(d13, 6) + " MU per km²"],

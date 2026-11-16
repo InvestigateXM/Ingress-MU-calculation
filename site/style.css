@@ -188,6 +188,10 @@ table.sum th { font-weight: 600; background: none; white-space: nowrap; }
 /* extra generic polygon states */
 .k-p[data-s=unread] { stroke: var(--muted); stroke-width: 1.2px; stroke-dasharray: 2 3; fill: var(--muted); fill-opacity: .1; }
 .k-p[data-s=hl2] { stroke: var(--c-kept); stroke-width: 2.5px; fill: var(--c-kept); fill-opacity: .12; }
+.k-p[data-s=ah] { fill: var(--c-poll); stroke: none; }
+.k-p[data-s=ah2] { fill: var(--c-kept); stroke: none; }
+.k-p[data-s=bbox] { stroke: var(--muted); stroke-width: 1.2px; stroke-dasharray: 6 3; }
+.k-l[data-s=move2] { stroke: var(--c-kept); stroke-width: 1.4px; stroke-dasharray: 4 3; }
 .k-p[data-s=fade] { stroke: var(--muted); stroke-width: 1px; stroke-opacity: .6; }
 .e[data-d="0"] { --hv: var(--h0); }
 .e[data-d="1"] { --hv: var(--h1); }

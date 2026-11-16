@@ -192,7 +192,7 @@ function makeTable(head, rows, fmts, n, hl) {
 
 function sizeStage(ui, tr) {
   const w = ui.svg.getBoundingClientRect().width || 640;
-  const u = tr.view[2] / w;
+  const u = (ui.view || tr.view)[2] / w;
   ui.svg.style.setProperty('--u', u);
   // Vertex labels move a fixed screen distance outward from their triangle.
   for (const [id, kind, g] of tr.els) {
@@ -226,8 +226,8 @@ function vertexField(tr, id) {
 }
 
 function placeLabels(ui, tr) {
-  const u = tr.view[2] / (ui.svg.getBoundingClientRect().width || 640);
-  const [x, y, w, ht] = tr.view;
+  const u = (ui.view || tr.view)[2] / (ui.svg.getBoundingClientRect().width || 640);
+  const [x, y, w, ht] = ui.view || tr.view;
   const occupied = [];
   ui.svg.querySelectorAll('.label-leader').forEach(n => n.remove());
   // Give vertex names priority; move numeric labels only as far as necessary.
@@ -290,6 +290,14 @@ function render(ui, tr, k) {
     }
   }
   const step = tr.steps[k];
+  // A step may zoom in (step.view); the scale bar only fits the full view, so it is hidden while zoomed.
+  const view = step.view || tr.view;
+  if (ui.view !== view) {
+    ui.view = view;
+    ui.svg.setAttribute('viewBox', view.join(' '));
+    ui.svg.querySelector('.sb').style.display = view === tr.view ? '' : 'none';
+    sizeStage(ui, tr);
+  }
   const used = {};
   for (const [id, kind] of tr.els) {
     const s = st[id] || '';

@@ -30,6 +30,18 @@ def build_a4(calc):
     assert events[0][0] == "start" and start["mode"] == "neighbors"
     axis = CellId(start["leaf"]).to_lat_lng()
     tr.poly("cap", circle_pts(proj, axis.lat().degrees, axis.lng().degrees, start["angle"]))
+    # the box the game draws around the field: its lat/lng extent (S2's GetRectBound gives the same numbers)
+    lat_lo, lat_hi = min(p[0] for p in pts) / 1e6, max(p[0] for p in pts) / 1e6
+    lng_lo, lng_hi = min(p[1] for p in pts) / 1e6, max(p[1] for p in pts) / 1e6
+    corners = [(lat_lo, lng_lo), (lat_lo, lng_hi), (lat_hi, lng_hi), (lat_hi, lng_lo)]
+    box = []
+    for (a1, b1), (a2, b2) in zip(corners, corners[1:] + corners[:1]):
+        box += [proj.ll(a1 + (a2 - a1) * t / 8, b1 + (b2 - b1) * t / 8) for t in range(8)]
+    tr.poly("bbox", box)
+    ax = ll_unit(axis.lat().degrees, axis.lng().degrees)
+    cap_ratio = [math.acos(max(-1, min(1, float(ax @ ll_unit(*c))))) / start["angle"] for c in corners]
+    # the cap is centred on the middle of the box and reaches the farthest corners (2 of 4, up to float noise)
+    assert max(cap_ratio) < 1 + 1e-6 and sorted(cap_ratio)[-2] > 0.999, cap_ratio
     seen = {}
 
     def ensure(cid):
@@ -40,7 +52,7 @@ def build_a4(calc):
 
     by_id = {c["id"]: c for c in f["cells"]}
     polls = [k for e, k in events if e == "poll"]
-    tr.legend = {"p:field": "Field (triangle)", "p:cap": "Smallest circle around the field", "p:wait": "Cell still to be checked",
+    tr.legend = {"p:field": "Field (triangle)", "p:bbox": "Box around the field", "p:cap": "Circle around the box", "p:hl": "Cell in focus", "p:wait": "Cell waiting to be checked",
                  "p:poll": "Cell being checked now", "p:done": "Cell that has been split", "p:in": "Final: completely inside the field",
                  "p:edge": "Final: smallest size (level 13)", "p:kept": "Final: kept whole because of the budget",
                  "p:miss": "Quarter that misses the field",
@@ -78,26 +90,31 @@ def build_a4(calc):
     tr.step(f"A big field is described by at most 20 cells, so the cells are big and stick out of the field. "
             f"Here the field gets {len(cells)} cells.", dict(final_state))
 
-    # step 3: the start
+    # step 3: the box and the circle
     pos = 1
     ops = {ek: "" for ek in final_state}
-    for cid in start["initial"]:
-        ops[ensure(cid)] = "miss"
-    run_events(ops)
-    n_start = sum(1 for v in ops.values() if v not in ("miss", ""))
-    a_km = start["angle"] * RE
-    tr.step(f"How does the game choose these {len(cells)} cells? It starts with {n_start} large cells (level {start['level']}) that touch the field. "
-            f"The dotted circle, {a_km:.0f} km in radius, is the smallest circle around the field; its size decides how large the first cells are.",
-            dict({"cap": "cap"}, **ops))
+    tr.step("To choose the cells, the game first draws a box around the field, from its northernmost to its southernmost "
+            "and westernmost to easternmost point, and then a circle around that box. This circle is not the smallest "
+            "possible one, but its size decides how large the first cells are.",
+            dict({"bbox": "bbox", "cap": "cap"}, **ops))
 
-    # steps 4 to 7: the checks, merged into a few steps
+    # step 4: the start cells
+    run_events(ops)
+    start_els = [k for k, v in ops.items() if v not in ("", "miss")]
+    n_start = len(start_els)
+    a_km = start["angle"] * RE
+    tr.step(f"The circle is {a_km:.0f} km in radius, so the game starts with cells of level {start['level']}. "
+            f"It picks the {n_start} cells of that size that touch the field. These are the first cells to check.",
+            {"bbox": "", **{k: "hl" for k in start_els}})
+
+    # steps 5 to 8: the checks, merged into a few steps
     n_first = 6
     n_refuse = next(n for n, p in enumerate(polls, 1) if not p["expand"])
     assert len(polls[n_first - 1]["children"]) == 4 and polls[n_first - 1]["expand"]
     assert all(p["expand"] for p in polls[:n_refuse - 1])
     prev = None
     for lo, hi in [(1, n_first - 1), (n_first, n_first), (n_first + 1, n_refuse - 1), (n_refuse, n_refuse)]:
-        ops = {}
+        ops = {k: "wait" for k in start_els} if prev is None else {}
         for n in range(lo, hi + 1):
             p = polls[n - 1]
             if prev is not None and prev["state"] != "kept":
@@ -116,28 +133,28 @@ def build_a4(calc):
         total = p["result"] + p["queue"] + k
         bud = {"r": p["result"], "q": p["queue"], "k": k, "max": 20, "go": bool(p["expand"] or k == 1), "n": hi}
         if hi == n_first - 1:
-            cap = ("The game takes the waiting cells one at a time and splits each into 4 quarters, keeping only the quarters that touch the field. "
-                   "A cell that only touches the field with one quarter is always split, since that does not add a cell.")
+            cap = ("The game checks the waiting cells in a fixed order; the order itself is not important here. "
+                   "Each cell is split into 4 quarters, and only the quarters that touch the field are kept. "
+                   "A cell with just one such quarter is always split, since that adds no cell.")
             bud = None
         elif hi == n_first:
-            cap = (f"The orange cell is split into its 4 quarters, and all 4 touch the field. The bar counts the cells the field would have after the split: "
-                   f"finished cells (solid), cells still waiting (outlined) and the new quarters (dotted). {total} is within the limit of 20, so the split goes ahead.")
+            cap = (f"The orange cell is being checked. All 4 of its quarters touch the field. The bar counts the cells the field would have after the split: "
+                   f"finished (solid), waiting (outlined) and new quarters (dotted). {total} is within the limit of 20, so the split goes ahead.")
         elif hi == n_refuse - 1:
-            cap = f"The game keeps splitting cells into quarters. After {hi} checks the bar has reached {total} of the 20 cells allowed."
+            cap = f"The game keeps splitting. After {hi} checks the bar has reached {total} of the 20 cells allowed."
         else:
-            cap = (f"The next cell (hatched) would bring the total to {total}, over the limit of 20, so it stays whole. "
-                   f"The game keeps splitting cells into quarters until splitting the next one would push it past 20 cells.")
+            cap = (f"Splitting the next cell (hatched) would bring the total to {total}, over the limit of 20, so it stays whole. "
+                   f"From here on, no cell is split any more.")
         tr.step(cap, ops, bud=bud)
     assert not any(p["expand"] for p in polls[n_refuse - 1:])
     last = polls[-1]
-    st = {"cap": ""}
+    st = {"cap": "", "bbox": ""}
     st.update(final_state)
     for cid, el in seen.items():
         if cid not in by_id:
             st[el] = ""
-    tr.step(f"The remaining {len(polls) - n_refuse} cells are kept whole the same way. That gives the {len(cells)} cells from the start: "
-            f"{nk} kept whole because of the budget and {count.get('in', 0)} completely inside the field.", st,
-            bud={"r": last["result"], "q": last["queue"], "k": len(last["children"]), "max": 20, "go": False, "n": len(polls)})
+    tr.step(f"The remaining {len(polls) - n_refuse} cells are kept whole too. That gives the {len(cells)} cells: "
+            f"{nk} kept whole because of the budget and {count.get('in', 0)} completely inside the field.", st)
     bnd = [c for c in cells if why[c["id"]] != "inside"]
     for c in bnd:
         tr.poly(f"cp:{c['t']}", [proj.vec(v) for v in clip_vecs(pts, c["id"])], "cp")
@@ -181,7 +198,7 @@ def build_a4(calc):
     tr.extra["check"] = check_block(f)
     tr.extra["check"]["start"] = {"level": start["level"], "polls": len(polls), "budget": 20}
     tr.extra["check"]["polls"] = record
-    return tr.finish(focus={"fld", "cap"} | {seen[c["id"]] for c in cells})
+    return tr.finish(focus={"fld", "cap", "bbox"} | {seen[c["id"]] for c in cells})
 
 
 build = build_a4
