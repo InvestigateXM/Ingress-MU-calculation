@@ -29,48 +29,100 @@
 </svg>
 <main>
 <h1>How cells and densities decide the Mind Units</h1>
-<p>The <a href="method.html">Method</a> page how Mind Units (MU) of a field are calculated exactly. This page shows its main ideas on five fixed example fields. The coordinates here are example coordinates, not necessarily portals.</p>
+<p>The <a href="method.html">Method</a> page explains exactly how the Mind Units (MU) of a field are calculated. This page shows the main ideas step by step, first on simple made-up examples and then on real example fields. The coordinates are example coordinates, not necessarily portals.</p>
+<details class="glossary" open>
+<summary>Words used on this page</summary>
+<dl>
+  <dt>Cell</dt><dd>The game divides the world into nested, roughly square cells. Each cell splits into four smaller cells (its quarters or <em>children</em>).</dd>
+  <dt>Level</dt><dd>The size of a cell. Higher levels are smaller: a level-13 cell, the smallest used for MU, is about 1 km²; a level-10 cell about 80 km².</dd>
+  <dt>Covering</dt><dd>The cells the game uses for one field: together they cover the whole field. A field uses at most 20 cells.</dd>
+  <dt>Density</dt><dd>How many MU one km² inside a cell is worth. It belongs to the whole cell, not to the spot where your field is.</dd>
+  <dt>Overlap</dt><dd>The part of the field that lies inside a cell, in km².</dd>
+  <dt>Contribution</dt><dd>The MU one cell gives a field before rounding: overlap × density.</dd>
+</dl>
+</details>
 <p>Each animation is a series of steps. Use <strong>Play</strong>, <strong>Previous</strong> and <strong>Next</strong>, or the slider. When the drawing has keyboard focus, the left and right arrow keys change the step, Home and End jump to the first and last step, and the space bar starts and stops. Under each animation the numbers of the example are listed.</p>
-<p class="hint">The first animation shows a small excerpt of the population data (13 pixel values, the pixels read by the sample points of the two cells shown). Everywhere else only values derived from it are shown: densities of cells, overlap areas and contributions.</p>
 <ol class="toc">
-  <li><a href="#a1">From pixels to the density of a cell</a></li>
-  <li><a href="#a2">A field inside one smallest cell</a></li>
-  <li><a href="#a3">A field that contains a combined cell</a></li>
+  <li><a href="#a0">The big picture</a></li>
+  <li><a href="#a2">A field inside one cell</a></li>
+  <li><a href="#g5">A smaller field with more MU</a></li>
+  <li><a href="#a6">Why cells have different sizes</a></li>
+  <li><a href="#a3">Big cells inside, small cells at the edge</a></li>
   <li><a href="#a4">The budget of 20 cells</a></li>
-  <li><a href="#a5">A smaller field with more MU</a></li>
+  <li><a href="#g1">Where the density of a cell comes from</a></li>
 </ol>
-<p class="hint">The muted orientation maps show selected roads, railways, water and places. Urban outlines in the regional maps only provide context, not the year-2000 population counts used in the calculation. Maps 1–3: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>, <a href="https://opendatacommons.org/licenses/odbl/1-0/">ODbL 1.0</a>. Maps 4–5: <a href="https://www.naturalearthdata.com/about/terms-of-use/">Natural Earth, public domain</a>. <a href="maps/README.md">Sources and downloadable vector extracts</a>.</p>
-<noscript><p class="hint">The animations need JavaScript. The example data is available in <a href="traces/a1.json">animation 1</a>, <a href="traces/a2.json">animation 2</a>, <a href="traces/a3.json">animation 3</a>, <a href="traces/a4.json">animation 4</a> and <a href="traces/a5.json">animation 5</a>.</p></noscript>
+<p class="hint">The muted orientation maps show selected roads, railways, water and places. Urban outlines in the regional maps only provide context, not the year-2000 population counts used in the calculation. Maps of the Munich examples: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>, <a href="https://opendatacommons.org/licenses/odbl/1-0/">ODbL 1.0</a>. Regional maps: <a href="https://www.naturalearthdata.com/about/terms-of-use/">Natural Earth, public domain</a>. <a href="maps/README.md">Sources and downloadable vector extracts</a>.</p>
+<noscript><p class="hint">The animations need JavaScript. The example data is available as JSON files in the <a href="https://github.com/InvestigateXM/Ingress-MU-calculation/tree/main/site/traces">traces folder</a>.</p></noscript>
 
-<section class="anim" id="a1" data-trace="traces/a1.json">
-  <h2>1. From pixels to the density of a cell</h2>
-  <p>The population data is a grid of 30 arc-second pixels. The smallest cells that the covering uses, cells of level 13, do not follow this grid. The density of such a cell is the mean of 16 values read from the grid, one per sample point. A cell of level 12 does the same with 64 values.</p>
+<!-- BEGIN a0 -->
+<section class="anim" id="a0" data-trace="traces/a0.json">
+  <h2>1. The big picture</h2>
+  <p>The game lays a grid of cells over your field. Each cell has a density: how many MU one km² in that cell is worth. The part of your field in each cell is multiplied by that cell's density, and the results are added up.</p>
   <div class="player"></div>
 </section>
+<!-- END a0 -->
 
+<!-- BEGIN a2 -->
 <section class="anim" id="a2" data-trace="traces/a2.json">
-  <h2>2. A field inside one smallest cell</h2>
-  <p>This field has a covering of one level-13 cell. Its contribution is the area of the field times the density of the whole cell; the regional minimum and final rounding then give its MU.</p>
+  <h2>2. A field inside one cell</h2>
+  <p>This small field lies inside a single smallest cell. Its MU is the area of the field times the density of the whole cell.</p>
   <div class="player"></div>
 </section>
+<!-- END a2 -->
 
+<!-- BEGIN a5 -->
+<section class="anim-group" id="g5">
+  <h2>3. A smaller field with more MU</h2>
+  <p>A field that lies completely inside another field can earn more MU, because the two fields can use different cells for the same ground.</p>
+  <div class="anim" id="a5g" data-trace="traces/a5g.json">
+    <h3>Simple example</h3>
+    <div class="player"></div>
+  </div>
+  <div class="anim" id="a5" data-trace="traces/a5.json">
+    <h3>Real example near Las Vegas</h3>
+    <div class="player"></div>
+  </div>
+</section>
+<!-- END a5 -->
+
+<!-- BEGIN a6 -->
+<section class="anim" id="a6" data-trace="traces/a6.json">
+  <h2>4. Why cells have different sizes</h2>
+  <p>Every cell splits into four smaller cells. The level of a cell says how often this has happened.</p>
+  <div class="player"></div>
+</section>
+<!-- END a6 -->
+
+<!-- BEGIN a3 -->
 <section class="anim" id="a3" data-trace="traces/a3.json">
-  <h2>3. A field that contains a combined cell</h2>
-  <p>A candidate whose four children are terminal becomes terminal itself; normalisation also merges four final siblings. A fully contained cell is already terminal and needs no split. Its density is the mean of its children's densities, but their contributions can differ slightly because their areas are unequal. At the field edge, unequal overlaps can make the difference much larger.</p>
+  <h2>5. Big cells inside, small cells at the edge</h2>
+  <p>The game prefers big cells where it can. When all four quarters of a cell are needed, it uses the whole cell instead. Inside the field that changes almost nothing; at the edge it can change the MU noticeably.</p>
   <div class="player"></div>
 </section>
+<!-- END a3 -->
 
+<!-- BEGIN a4 -->
 <section class="anim" id="a4" data-trace="traces/a4.json">
-  <h2>4. The budget of 20 cells</h2>
-  <p>For a candidate at level 6 or finer with more than one intersecting child, splitting requires result + queue + children to fit within 20. A single intersecting child is always followed, and cells coarser than level 6 must split. Other candidates stay whole when the budget would be exceeded. Their density is the mean over the whole cell.</p>
+  <h2>6. The budget of 20 cells</h2>
+  <p>A field is described by at most 20 cells. A big field therefore gets big cells that stick out of the field, and each of them counts with the density of the whole cell.</p>
   <div class="player"></div>
 </section>
+<!-- END a4 -->
 
-<section class="anim" id="a5" data-trace="traces/a5.json">
-  <h2>5. A smaller field with more MU</h2>
-  <p>The covering depends on the field. A field G that lies completely inside a field F can earn more MU than F, because the two coverings average different cells.</p>
-  <div class="player"></div>
+<!-- BEGIN a1 -->
+<section class="anim-group" id="g1">
+  <h2>7. Where the density of a cell comes from</h2>
+  <p>The density of a cell is read from a population map of the year 2000. Inside each smallest cell the game places 16 evenly spaced measuring points, reads the map at each point and takes the mean.</p>
+  <div class="anim" id="a1g" data-trace="traces/a1g.json">
+    <h3>Simple example</h3>
+    <div class="player"></div>
+  </div>
+  <div class="anim" id="a1" data-trace="traces/a1.json">
+    <h3>Real example in Munich</h3>
+    <div class="player"></div>
+  </div>
 </section>
+<!-- END a1 -->
 </main>
 <footer>
   Independent reconstruction; not affiliated with or endorsed by Niantic. Based on Gordon Ludlow's <a href="https://gordonludlow.com/ingress/reverse-engineering-mu/">Reverse Engineering MU</a>. Population data: Global Rural-Urban Mapping Project, Version 1 (GRUMP v1), CIESIN / NASA SEDAC. Source and API description: <a href="https://github.com/InvestigateXM/Ingress-MU-calculation">GitHub</a>.

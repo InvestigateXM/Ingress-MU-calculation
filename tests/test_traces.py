@@ -36,7 +36,7 @@ def field_blocks(tr):
 
 
 def test_expected_files_exist():
-    assert set(LOAD) == {"a1", "a2", "a3", "a4", "a5"}
+    assert set(LOAD) == {"a0", "a1", "a1g", "a2", "a3", "a4", "a5", "a5g", "a6"}
 
 
 @pytest.mark.parametrize("name", sorted(LOAD))
@@ -173,12 +173,15 @@ def test_orientation_maps_match_trace_projections():
     folder = TRACES.parent / 'maps'
     size = 0
     for name, trace in LOAD.items():
-        path = folder / (name + '.json')
+        if trace.get('schematic'):
+            assert not (folder / (name + '.json')).exists()
+            continue
+        path = folder / (trace.get('map', name) + '.json')
         data = json.loads(path.read_text(encoding='utf-8'))
         size += path.stat().st_size
         assert data['center'] == trace['center'] and data['view'] == trace['view']
         assert data['features'] and data['labels']
-        assert ('OpenStreetMap' if name <= 'a3' else 'Natural Earth') in data['source']
+        assert ('OpenStreetMap' if trace.get('map', name) <= 'a3' else 'Natural Earth') in data['source']
         x, y, w, h = data['view']
         for kind, coords, closed in data['features']:
             assert kind in ('road', 'rail', 'water', 'river', 'urban')
