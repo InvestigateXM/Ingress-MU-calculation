@@ -45,7 +45,9 @@ function build(root, tr) {
     svg.style.setProperty('--fill-' + name, `url(#hatch-${name}-${tr.id})`);
   }
   svg.appendChild(defs);
-  const map = JSON.parse(document.getElementById('map-data')?.textContent || '{}')[tr.id];
+  // A trace may borrow the orientation map of another trace with the same view (tr.map).
+  const mapKey = tr.map || tr.id;
+  const map = tr.schematic ? null : JSON.parse(document.getElementById('map-data')?.textContent || '{}')[mapKey];
   const mapLayer = el('g', { class: 'base-map', 'aria-label': 'Orientation map' });
   if (map) {
     for (const [kind, coords, closed] of map.features) {
@@ -68,18 +70,18 @@ function build(root, tr) {
     if (tr.bins && tr.bins[id] !== undefined) n.setAttribute('data-d', tr.bins[id]);
     n.setAttribute('vector-effect', 'non-scaling-stroke');
     nodes[id] = n;
-    if (tr.id === 'a1' && id.startsWith('d13:')) {
-      const i = Number(id.split(':')[1]);
-      const row = tr.tables.samples.r[i];
-      const label = `Sample ${i + 1}: pixel (${row[1]}, ${row[2]}), count ${num(row[3], 4)}`;
+    // tr.tips: tooltip text per element (shown on hover and keyboard focus)
+    if (tr.tips && tr.tips[id]) {
+      const label = tr.tips[id];
       n.appendChild(el('title', {}, label));
       n.setAttribute('tabindex', '0');
       n.setAttribute('aria-label', label);
     }
     svg.appendChild(n);
   }
-  // scale bar and north marker, in the lower left and upper right corner
+  // scale bar and north marker, in the lower left and upper right corner (not for schematic drawings)
   const sb = el('g', { class: 'sb' });
+  if (!tr.schematic) {
   const bx = vx + 0.04 * vw, by = vy + vh - 0.05 * vh;
   sb.append(el('line', { x1: bx, y1: by, x2: bx + tr.scale_km, y2: by, 'vector-effect': 'non-scaling-stroke' }),
     el('line', { x1: bx, y1: by - 0.012 * vh, x2: bx, y2: by + 0.012 * vh, 'vector-effect': 'non-scaling-stroke' }),
@@ -89,6 +91,7 @@ function build(root, tr) {
   const nx = vx + vw - 0.05 * vw, ny = vy + 0.12 * vh;
   sb.append(el('line', { x1: nx, y1: ny + 0.05 * vh, x2: nx, y2: ny - 0.01 * vh, 'vector-effect': 'non-scaling-stroke' }),
     el('text', { x: nx, y: ny - 0.04 * vh, 'text-anchor': 'middle' }, 'N'));
+  }
   svg.appendChild(sb);
 
   const wrap = h('div', { class: 'stage-wrap', tabindex: '0', role: 'group',
@@ -97,7 +100,7 @@ function build(root, tr) {
   const sampleInfo = h('div', { class: 'sample-info', hidden: '' });
   wrap.appendChild(sampleInfo);
   for (const [id, n] of Object.entries(nodes)) {
-    if (!id.startsWith('d13:')) continue;
+    if (!tr.tips || !tr.tips[id]) continue;
     const reveal = () => { sampleInfo.textContent = n.getAttribute('aria-label'); sampleInfo.hidden = false; };
     const hide = () => { sampleInfo.hidden = true; };
     n.addEventListener('focus', reveal); n.addEventListener('mouseenter', reveal);
@@ -114,14 +117,15 @@ function build(root, tr) {
     for (const field of ['F', 'G']) {
       const c = tr.comparison[field];
       comparison.appendChild(h('p', { class: 'comparison-numbers', 'data-field': field },
-        `${field}: ${c.token}, level ${c.level} — density ${num(c.density, 1)} × overlap ${num(c.overlap, 0)} km² ≈ ${num(c.contribution, 0)} MU`));
+        `Field ${field}, orange cell: ${num(c.overlap, 0)} km² of the field × ${num(c.density, 1)} MU per km² ≈ ${num(c.contribution, 0)} MU`));
     }
     wrap.insertBefore(comparison, legend);
   }
   if (map) {
     const credit = h('p', { class: 'map-credit' });
-    credit.append(tr.id === 'a5' ? 'Las Vegas / Lake Mead · Map: ' : 'Munich region · Map: ', h('a', { href: tr.id <= 'a3' ? 'https://www.openstreetmap.org/copyright' : 'https://www.naturalearthdata.com/about/terms-of-use/' },
-      tr.id <= 'a3' ? '© OpenStreetMap contributors (ODbL)' : 'Natural Earth (public domain)'));
+    const osm = /OpenStreetMap/.test(map.source || '');
+    credit.append((tr.place || 'Munich region') + ' · Map: ', h('a', { href: osm ? 'https://www.openstreetmap.org/copyright' : 'https://www.naturalearthdata.com/about/terms-of-use/' },
+      osm ? '© OpenStreetMap contributors (ODbL)' : 'Natural Earth (public domain)'));
     wrap.appendChild(credit);
   }
 
@@ -192,8 +196,8 @@ function sizeStage(ui, tr) {
   ui.svg.style.setProperty('--u', u);
   // Vertex labels move a fixed screen distance outward from their triangle.
   for (const [id, kind, g] of tr.els) {
-    if (kind !== 't' || !/^t(A|B|C|F3|G3)$/.test(id)) continue;
-    const field = tr.els.find(e => e[0] === (tr.id === 'a5' ? (id === 'tG3' ? 'fG' : 'fF') : 'fld'));
+    if (kind !== 't' || !vertexField(tr, id)) continue;
+    const field = tr.els.find(e => e[0] === vertexField(tr, id));
     if (!field) continue;
     const centre = field[2].reduce((a, p) => [a[0] + p[0] / 3, a[1] + p[1] / 3], [0, 0]);
     const dx = g[0] - centre[0], dy = g[1] - centre[1], len = Math.hypot(dx, dy);
@@ -213,6 +217,14 @@ function sizeStage(ui, tr) {
   placeLabels(ui, tr);
 }
 
+// Vertex (portal) labels are pushed outward from their triangle. tr.vertices maps a label id
+// to the id of its triangle; older traces use the names tA/tB/tC (field 'fld') and tF3/tG3.
+function vertexField(tr, id) {
+  if (tr.vertices) return tr.vertices[id] || null;
+  if (!/^t(A|B|C|F3|G3)$/.test(id)) return null;
+  return tr.id === 'a5' ? (id === 'tG3' ? 'fG' : 'fF') : 'fld';
+}
+
 function placeLabels(ui, tr) {
   const u = tr.view[2] / (ui.svg.getBoundingClientRect().width || 640);
   const [x, y, w, ht] = tr.view;
@@ -220,9 +232,9 @@ function placeLabels(ui, tr) {
   ui.svg.querySelectorAll('.label-leader').forEach(n => n.remove());
   // Give vertex names priority; move numeric labels only as far as necessary.
   const labels = tr.els.filter(e => e[1] === 't' && ui.nodes[e[0]].dataset.s === 't')
-    .sort((a, b) => Number(/^t(A|B|C|F3|G3)$/.test(b[0])) - Number(/^t(A|B|C|F3|G3)$/.test(a[0])));
+    .sort((a, b) => Number(!!vertexField(tr, b[0])) - Number(!!vertexField(tr, a[0])));
   for (const [id, , g] of labels) {
-    const n = ui.nodes[id], vertex = /^t(A|B|C|F3|G3)$/.test(id);
+    const n = ui.nodes[id], vertex = !!vertexField(tr, id);
     const bx = vertex ? Number(n.getAttribute('x')) : g[0];
     const by = vertex ? Number(n.getAttribute('y')) : g[1];
     const box = n.getBBox(), hw = box.width / 2 + 3 * u, hh = box.height / 2 + 2 * u;
@@ -247,7 +259,7 @@ function placeLabels(ui, tr) {
   }
   const firstLabel = ui.svg.querySelector('.k-t');
   ui.svg.querySelectorAll('.label-leader').forEach(n => ui.svg.insertBefore(n, firstLabel));
-  ui.svg.querySelectorAll('.map-label').forEach((n, i) => {
+  if (ui.map) ui.svg.querySelectorAll('.map-label').forEach((n, i) => {
     const [, bx, by] = ui.map.labels[i], b = n.getBBox(), hw = b.width / 2 + 4*u, hh = b.height / 2 + 3*u;
     n.style.visibility = 'hidden';
     for (const d of [0, -18, 18, -36, 36]) {
@@ -263,13 +275,13 @@ function placeLabels(ui, tr) {
 function render(ui, tr, k) {
   const st = states(tr, k);
   if (ui.comparison) {
-    const comparing = k >= 6;
+    const comparing = k >= (tr.comparison.from ?? 6);
     ui.comparison.hidden = false;
     ui.comparison.style.visibility = comparing ? 'visible' : 'hidden';
     ui.comparison.inert = !comparing;
     if (comparing) {
       const field = ui.compareField || 'F', c = tr.comparison[field];
-      for (const [id] of tr.els) if (/^(F:|G:|pF:|pG:|qF:|qG:|dec)/.test(id)) st[id] = '';
+      for (const [id] of tr.els) if ((tr.comparison.clear ? new RegExp(tr.comparison.clear) : /^(F:|G:|pF:|pG:|qF:|qG:|dec)/).test(id)) st[id] = '';
       Object.assign(st, c.cover);
       st[c.highlight] = 'hl'; st['dec' + field] = 't';
       st.fF = 'field'; st.fG = 'field2'; st.tF3 = st.tG3 = 't';
@@ -282,7 +294,7 @@ function render(ui, tr, k) {
   for (const [id, kind] of tr.els) {
     const s = st[id] || '';
     ui.nodes[id].setAttribute('data-s', s);
-    if (kind === 'd') ui.nodes[id].setAttribute('tabindex', s && id.startsWith('d13:') ? '0' : '-1');
+    if (kind === 'd') ui.nodes[id].setAttribute('tabindex', s && tr.tips && tr.tips[id] ? '0' : '-1');
     if (s) used[kind + ':' + s] = true;
   }
   // field outlines are drawn on top of the cells
@@ -326,12 +338,12 @@ function render(ui, tr, k) {
   if (b) {
     const total = b.r + b.q + b.k;
     const slots = Math.max(b.max, total);
-    const bar = h('div', { class: 'slots', role: 'img', 'aria-label': `Budget: result ${b.r}, queue ${b.q}, children ${b.k}; total ${total} of ${b.max}` });
+    const bar = h('div', { class: 'slots', role: 'img', 'aria-label': `Budget: ${b.r} cells kept, ${b.q} still to check, ${b.k} new quarters; ${total} of ${b.max}` });
     for (let i = 0; i < slots; i++) {
       const cls = i < b.r ? 'res' : i < b.r + b.q ? 'que' : 'kid';
       bar.appendChild(h('span', { class: 'slot ' + cls + (i >= b.max ? ' over' : '') + (i === b.max ? ' edge' : '') }));
     }
-    const legend = h('p', { class: 'hint' }, `Result ${b.r} (solid), queue ${b.q} (outlined), children ${b.k} (dotted); the limit is ${b.max}.`);
+    const legend = h('p', { class: 'hint' }, `Cells kept ${b.r} (solid), cells still to check ${b.q} (outlined), new quarters if this cell is split ${b.k} (dotted); the limit is ${b.max}.`);
     ui.bud.replaceChildren(h('p', { class: 'bt' }, `${b.r} + ${b.q} + ${b.k} = ${total} ${total <= b.max ? '≤' : '>'} ${b.max}`), bar, legend);
   }
   // table
@@ -422,4 +434,4 @@ async function init(section) {
   section.dataset.ready = '1';
 }
 
-document.querySelectorAll('section.anim').forEach(init);
+document.querySelectorAll('.anim[data-trace]').forEach(init);
