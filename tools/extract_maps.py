@@ -22,7 +22,9 @@ import shapefile
 from shapely.geometry import shape, box, LineString, Polygon
 from shapely.ops import transform, linemerge
 
-from export_traces import Proj, RE, ROOT
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from anim.common import Proj, Ortho, RE, ROOT  # noqa: E402
 
 NE = {
     'urban': ('cultural', 'urban_areas'),
@@ -171,11 +173,47 @@ def extract(tr, features, places, source, date=''):
                 features=out, labels=labels[:5])
 
 
+def globe(cache, tr, scale='110m', tol=20.0):
+    """Orientation map for a globe trace (Ortho projection): sea disc, land, one label."""
+    p = Ortho(*tr['center'])
+    stem = f'ne_{scale}_land'
+    url = f'https://naturalearth.s3.amazonaws.com/{scale}_physical/{stem}.zip'
+    archive = zipfile.ZipFile(io.BytesIO(download(cache, stem+'.zip', url)))
+    reader = shapefile.Reader(shp=io.BytesIO(archive.read(stem+'.shp')),
+                              shx=io.BytesIO(archive.read(stem+'.shx')),
+                              dbf=io.BytesIO(archive.read(stem+'.dbf')))
+    disc = Polygon([(RE * math.cos(a), RE * math.sin(a)) for a in np.linspace(0, 2 * math.pi, 181)[:-1]])
+    out = [['water', [[round(a), round(b)] for a, b in disc.exterior.coords], True]]
+    def emit(g):
+        if g.is_empty: return
+        if g.geom_type == 'Polygon':
+            if g.area > 4e4:
+                out.append(['urban', [[round(a), round(b)] for a, b in g.exterior.coords], True])
+        elif hasattr(g, 'geoms'):
+            for child in g.geoms: emit(child)
+    for record in reader.iterShapeRecords():
+        geom = shape(record.shape.__geo_interface__).segmentize(1.0)
+        for part in getattr(geom, 'geoms', [geom]):
+            ring = [p.ll(lat, lon, 3) for lon, lat in part.exterior.coords]  # behind -> horizon
+            g = Polygon(ring).buffer(0).intersection(disc)
+            emit(g.simplify(tol, preserve_topology=True))
+    xx, yy = p.ll(34.0, -42.0)  # Munich is labelled by the trace itself, at every zoom
+    return dict(source=f'Natural Earth 1:{scale[:-1]}m / public domain', date='', center=tr['center'], view=tr['view'],
+                features=out, labels=[['Atlantic Ocean', xx, yy]])
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--cache', type=Path, required=True)
     ap.add_argument('--only', choices=['osm', 'ne', 'all'], default='all')
+    ap.add_argument('--globe', action='store_true', help='only write the globe map site/maps/a6w.json')
     args = ap.parse_args(); args.cache.mkdir(parents=True, exist_ok=True)
+    if args.globe:
+        tr = json.loads((ROOT/'site'/'traces'/'a6w.json').read_text(encoding='utf-8'))
+        text = json.dumps(globe(args.cache, tr), ensure_ascii=False, separators=(',', ':'))+'\n'
+        (ROOT/'site'/'maps'/'a6w.json').write_text(text, encoding='utf-8', newline='\n')
+        print('a6w', len(text.encode()), 'bytes')
+        return
     traces = [json.loads((ROOT/'site'/'traces'/f'a{i}.json').read_text(encoding='utf-8')) for i in range(1, 6)]
     bb = [bounds(t) for t in traces[:3]]
     osm_features, osm_places, date = osm(args.cache, [min(b[0] for b in bb), min(b[1] for b in bb), max(b[2] for b in bb), max(b[3] for b in bb)]) if args.only != 'ne' else ([], [], '')

@@ -43,7 +43,7 @@
 </details>
 <p>Each animation is a series of steps. Use <strong>Play</strong>, <strong>Previous</strong> and <strong>Next</strong>, or the slider. When the drawing has keyboard focus, the left and right arrow keys change the step, Home and End jump to the first and last step, and the space bar starts and stops. Under each animation the numbers of the example are listed.</p>
 <ol class="toc">
-  <li><a href="#a6">Why cells have different sizes</a></li>
+  <li><a href="#g6">Why cells have different sizes</a></li>
   <li><a href="#g1">Where the density of a cell comes from</a></li>
   <li><a href="#a0">The big picture</a></li>
   <li><a href="#a2">A field inside one cell</a></li>
@@ -55,10 +55,21 @@
 <noscript><p class="hint">The animations need JavaScript. The example data is available as JSON files in the <a href="https://github.com/InvestigateXM/Ingress-MU-calculation/tree/main/site/traces">traces folder</a>.</p></noscript>
 
 <!-- BEGIN a6 -->
-<section class="anim" id="a6" data-trace="traces/a6.json">
+<section class="anim-group" id="g6">
   <h2>1. Why cells have different sizes</h2>
-  <p>Cells come in many sizes. Cutting a cell into four quarters, again and again, gives smaller and smaller cells. The level of a cell says how many cuts it took, so a higher level means a smaller cell. All cells form one fixed grid over the world, so only the four quarters of one cell can ever be combined into a bigger cell.</p>
-  <div class="player"></div>
+  <p>Cells come in many sizes. Cutting a cell into four quarters, again and again, gives smaller and smaller cells. The level of a cell says how many cuts it took, so a higher level means a smaller cell. All cells form one fixed grid over the whole world, so only the four quarters of one cell can ever be combined into a bigger cell.</p>
+  <div class="anim" id="a6" data-trace="traces/a6.json">
+    <h3>Simple example</h3>
+    <div class="player"></div>
+  </div>
+  <div class="anim" id="a6w" data-trace="traces/a6w.json">
+    <h3>The real grid over the whole world</h3>
+    <div class="player"></div>
+  </div>
+  <div class="anim" id="a6m" data-trace="traces/a6m.json">
+    <h3>Up close near Munich</h3>
+    <div class="player"></div>
+  </div>
 </section>
 <!-- END a6 -->
 

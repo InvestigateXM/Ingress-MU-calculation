@@ -262,6 +262,7 @@ function placeLabels(ui, tr) {
   if (ui.map) ui.svg.querySelectorAll('.map-label').forEach((n, i) => {
     const [, bx, by] = ui.map.labels[i], b = n.getBBox(), hw = b.width / 2 + 4*u, hh = b.height / 2 + 3*u;
     n.style.visibility = 'hidden';
+    if (bx < x || bx > x + w || by < y || by > y + ht) return;  // place lies outside a zoomed view
     for (const d of [0, -18, 18, -36, 36]) {
       const cx = Math.max(x+hw, Math.min(x+w-hw, bx)), cy = Math.max(y+hh, Math.min(y+ht-hh, by+d*u));
       const r = [cx-hw, cy-hh, cx+hw, cy+hh];
