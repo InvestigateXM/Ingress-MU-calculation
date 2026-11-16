@@ -120,7 +120,7 @@ def build_a1(calc):
     tr.step(f"The population map is a grid of pixels, each about {w_km:.2f} km wide and {h_km:.2f} km tall. "
             f"The orange cell, {a13:.2f} km² in size, is tilted and does not line up with them, so it covers parts of several pixels.",
             {"@px": "grid", "c13": "hl"})
-    tr.step("Inside the cell the game places the same 16 measuring points, evenly spaced. Hover or focus a point to see which pixel it reads.",
+    tr.step("Inside the cell the game places the same 16 measuring points, evenly spaced.",
             {"@d13": "dot"})
     tr.step("Every point is moved half a pixel up and to the left (the arrows) before the map is read. "
             "The game does not read the pixel a point lies in. It looks half a pixel up and to the left and reads the pixel it finds there.",
@@ -132,7 +132,8 @@ def build_a1(calc):
     s.update({f"un:{k[0]}:{k[1]}": "m" for k in unread})
     tr.step(f"Each shifted point reads the pixel it now lies in. Six pixels (A to F) are read, and the badges show how many points read each one. "
             f"The cell also overlaps {len(unread)} pixels that no point reads, which are ignored.", s)
-    tr.step("Each pixel has a count of people. The table shows, for each of the 16 points, the pixel it reads and that pixel's count.",
+    tr.step("Each pixel has a count of people. The table shows, for each of the 16 points, the pixel it reads and that pixel's count. "
+            "Hover or focus a point to see the same for that point.",
             {"@ln": "", **{f"ct:{k[0]}:{k[1]}": "b" for k in reads}}, tb=["samples", 16, None])
     back = {"@sh": "", "@ln": "", "@lt": "", "@bd": "", "@un": "", "@d13": "dot", "@mb": "move2", "@ah2": "ah2",
             **{f"px:{k[0]}:{k[1]}": "read" for k in reads}, **{f"px:{k[0]}:{k[1]}": "grid" for k in unread}}

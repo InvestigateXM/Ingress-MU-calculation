@@ -46,10 +46,10 @@
   <li><a href="#g6">Why cells have different sizes</a></li>
   <li><a href="#g1">Where the density of a cell comes from</a></li>
   <li><a href="#a0">The big picture</a></li>
-  <li><a href="#a2">A field inside one cell</a></li>
-  <li><a href="#g5">A smaller field with more MU</a></li>
   <li><a href="#a3">Big cells inside, small cells at the edge</a></li>
   <li><a href="#a4">The budget of 20 cells</a></li>
+  <li><a href="#a2">A field inside one cell</a></li>
+  <li><a href="#g5">A smaller field with more MU</a></li>
 </ol>
 <p class="hint">The muted orientation maps show selected roads, railways, water and places. Urban outlines in the regional maps only provide context, not the year-2000 population counts used in the calculation. Maps of the Munich examples: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>, <a href="https://opendatacommons.org/licenses/odbl/1-0/">ODbL 1.0</a>. Regional maps: <a href="https://www.naturalearthdata.com/about/terms-of-use/">Natural Earth, public domain</a>. <a href="maps/README.md">Sources and downloadable vector extracts</a>.</p>
 <noscript><p class="hint">The animations need JavaScript. The example data is available as JSON files in the <a href="https://github.com/InvestigateXM/Ingress-MU-calculation/tree/main/site/traces">traces folder</a>.</p></noscript>
@@ -70,6 +70,7 @@
     <h3>Up close near Munich</h3>
     <div class="player"></div>
   </div>
+  <p class="eli5"><strong>In short:</strong> Picture the whole Earth covered in tiles that never move. Cut a tile into four and you get four smaller tiles, and you can keep cutting. Four small tiles can only be glued back together if they came from the same bigger tile.</p>
 </section>
 <!-- END a6 -->
 
@@ -85,6 +86,7 @@
     <h3>A real cell in Munich</h3>
     <div class="player"></div>
   </div>
+  <p class="eli5"><strong>In short:</strong> Every smallest cell gets a price: how many MU one km² of it is worth. The game looks at 16 spots in the cell on an old population map, a little up and to the left of each spot, and takes the average. The price belongs to the whole cell, wherever your field sits in it.</p>
 </section>
 <!-- END a1 -->
 
@@ -93,20 +95,40 @@
   <h2>3. The big picture</h2>
   <p>The game lays a grid of cells over your field. Each cell has a density: how many MU one km² in that cell is worth. The part of your field in each cell is multiplied by that cell's density, and the results are added up and rounded.</p>
   <div class="player"></div>
+  <p class="eli5"><strong>In short:</strong> Your field is a cookie cutter laid over the cells. For each cell, the game takes how much of your field sits on it, times that cell's price, adds everything up and rounds.</p>
 </section>
 <!-- END a0 -->
 
+<!-- BEGIN a3 -->
+<section class="anim" id="a3" data-trace="traces/a3.json">
+  <h2>4. Big cells inside, small cells at the edge</h2>
+  <p>The game prefers big cells where it can. When all four quarters of a cell are needed, it uses the whole cell instead. Inside the field that changes almost nothing; at the edge it can change the MU noticeably.</p>
+  <div class="player"></div>
+  <p class="eli5"><strong>In short:</strong> When all four quarters of a cell are needed, the game uses the whole cell instead. In the middle of a field that changes almost nothing. At the edge it can change the MU a bit.</p>
+</section>
+<!-- END a3 -->
+
+<!-- BEGIN a4 -->
+<section class="anim" id="a4" data-trace="traces/a4.json">
+  <h2>5. The budget of 20 cells</h2>
+  <p>A field is described by at most 20 cells. A big field therefore gets big cells that stick out of the field, and each of them counts with the density of the whole cell. This animation shows how the game picks the cells: it splits cells into quarters (see "Why cells have different sizes" and "Big cells inside, small cells at the edge") until the limit of 20 is reached.</p>
+  <div class="player"></div>
+  <p class="eli5"><strong>In short:</strong> The game may use at most 20 cells for a field. It starts big and splits cells into quarters until it runs out, so a big field ends up with big cells that stick out past its edges.</p>
+</section>
+<!-- END a4 -->
+
 <!-- BEGIN a2 -->
 <section class="anim" id="a2" data-trace="traces/a2.json">
-  <h2>4. A field inside one cell</h2>
+  <h2>6. A field inside one cell</h2>
   <p>This small field lies inside a single smallest cell. Its MU is the area of the field times the density of the whole cell.</p>
   <div class="player"></div>
+  <p class="eli5"><strong>In short:</strong> If your field fits inside one cell, its MU is simply its area times that cell's price.</p>
 </section>
 <!-- END a2 -->
 
 <!-- BEGIN a5 -->
 <section class="anim-group" id="g5">
-  <h2>5. A smaller field with more MU</h2>
+  <h2>7. A smaller field with more MU</h2>
   <p>A small field inside a big one can earn more MU than the big one. A big field has to use big cells, and a big cell averages a crowded place with its quiet surroundings. A small field can use a small cell and keeps the crowded value.</p>
   <div class="anim" id="a5g" data-trace="traces/a5g.json">
     <h3>Simple example</h3>
@@ -116,24 +138,9 @@
     <h3>Real example near Las Vegas</h3>
     <div class="player"></div>
   </div>
+  <p class="eli5"><strong>In short:</strong> A big field must use big cells, and a big cell's price is the average of a busy place and the empty land around it. A small field can use just the busy cell, so it can be worth more than the big field around it.</p>
 </section>
 <!-- END a5 -->
-
-<!-- BEGIN a3 -->
-<section class="anim" id="a3" data-trace="traces/a3.json">
-  <h2>6. Big cells inside, small cells at the edge</h2>
-  <p>The game prefers big cells where it can. When all four quarters of a cell are needed, it uses the whole cell instead. Inside the field that changes almost nothing; at the edge it can change the MU noticeably.</p>
-  <div class="player"></div>
-</section>
-<!-- END a3 -->
-
-<!-- BEGIN a4 -->
-<section class="anim" id="a4" data-trace="traces/a4.json">
-  <h2>7. The budget of 20 cells</h2>
-  <p>A field is described by at most 20 cells. A big field therefore gets big cells that stick out of the field, and each of them counts with the density of the whole cell. This animation shows how the game picks the cells: it splits cells into quarters (see "Why cells have different sizes" and "Big cells inside, small cells at the edge") until the limit of 20 is reached.</p>
-  <div class="player"></div>
-</section>
-<!-- END a4 -->
 </main>
 <footer>
   Independent reconstruction; not affiliated with or endorsed by Niantic. Based on Gordon Ludlow's <a href="https://gordonludlow.com/ingress/reverse-engineering-mu/">Reverse Engineering MU</a>. Population data: Global Rural-Urban Mapping Project, Version 1 (GRUMP v1), CIESIN / NASA SEDAC. Source and API description: <a href="https://github.com/InvestigateXM/Ingress-MU-calculation">GitHub</a>.

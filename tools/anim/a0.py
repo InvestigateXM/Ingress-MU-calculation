@@ -33,7 +33,7 @@ def build(calc):
     tr.step("Each cell has a density: how many MU one km² is worth there. Darker cells are denser, as on a population map.",
             {"@c": "heat", "@d": "t"})
     tr.step("Only the part of the field inside a cell counts for that cell. Each part is worth its area times the cell's density, "
-            "in MU. How the game chooses which cell sizes to use is shown in the last animations.",
+            "in MU. How the game chooses which cell sizes to use is shown in the next two animations.",
             {"@c": "cell", "@cp": "clip", "@d": "", "@m": "t"})
     tr.step("Add up the MU of all cells and round: this field is worth " + fmt(f["mu"], 0) + " MU.",
             {},
