@@ -1,4 +1,4 @@
-"""Animation 5."""
+"""A smaller field with more MU: the real example near Las Vegas."""
 
 from .common import *  # noqa: F401,F403
 from .common import _clip, _normals  # noqa: F401

@@ -1,4 +1,4 @@
-"""Animation 2."""
+"""A field inside one cell."""
 
 from .common import *  # noqa: F401,F403
 from .common import _clip, _normals  # noqa: F401
@@ -72,7 +72,7 @@ def build_a2(calc):
     s = {f"d:{i}": "in" for i in range(16)}
     tr.step("The game measures the population at 16 evenly spaced points in the cell. All 16 count, inside or outside the field.", s)
     tr.step(f"The density of the cell is the mean of its 16 measurements, {fmt(dens, 1)} MU per km². This is the same cell as in the "
-            f"real example of the last animation, \"Where the density of a cell comes from\".", {},
+            f"Munich example of \"Where the density of a cell comes from\".", {},
             eq=f"density = mean of 16 points = {fmt(dens, 3)} MU per km²")
     tr.step(f"The density belongs to the cell, not to the spot where the field lies. The eight neighbouring cells have densities "
             f"from {fmt(nvals[0], 0)} to {fmt(nvals[-1], 0)} MU per km² (shown).", {"@nb": "cell", "@nt": "t"})

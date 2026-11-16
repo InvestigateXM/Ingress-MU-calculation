@@ -1,4 +1,4 @@
-"""Animation 3."""
+"""Big cells inside, small cells at the edge."""
 
 from .common import *  # noqa: F401,F403
 from .common import _clip, _normals  # noqa: F401

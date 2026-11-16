@@ -43,20 +43,43 @@
 </details>
 <p>Each animation is a series of steps. Use <strong>Play</strong>, <strong>Previous</strong> and <strong>Next</strong>, or the slider. When the drawing has keyboard focus, the left and right arrow keys change the step, Home and End jump to the first and last step, and the space bar starts and stops. Under each animation the numbers of the example are listed.</p>
 <ol class="toc">
+  <li><a href="#a6">Why cells have different sizes</a></li>
+  <li><a href="#g1">Where the density of a cell comes from</a></li>
   <li><a href="#a0">The big picture</a></li>
   <li><a href="#a2">A field inside one cell</a></li>
   <li><a href="#g5">A smaller field with more MU</a></li>
-  <li><a href="#a6">Why cells have different sizes</a></li>
   <li><a href="#a3">Big cells inside, small cells at the edge</a></li>
   <li><a href="#a4">The budget of 20 cells</a></li>
-  <li><a href="#g1">Where the density of a cell comes from</a></li>
 </ol>
 <p class="hint">The muted orientation maps show selected roads, railways, water and places. Urban outlines in the regional maps only provide context, not the year-2000 population counts used in the calculation. Maps of the Munich examples: <a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>, <a href="https://opendatacommons.org/licenses/odbl/1-0/">ODbL 1.0</a>. Regional maps: <a href="https://www.naturalearthdata.com/about/terms-of-use/">Natural Earth, public domain</a>. <a href="maps/README.md">Sources and downloadable vector extracts</a>.</p>
 <noscript><p class="hint">The animations need JavaScript. The example data is available as JSON files in the <a href="https://github.com/InvestigateXM/Ingress-MU-calculation/tree/main/site/traces">traces folder</a>.</p></noscript>
 
+<!-- BEGIN a6 -->
+<section class="anim" id="a6" data-trace="traces/a6.json">
+  <h2>1. Why cells have different sizes</h2>
+  <p>Cells come in many sizes. Cutting a cell into four quarters, again and again, gives smaller and smaller cells. The level of a cell says how many cuts it took, so a higher level means a smaller cell. All cells form one fixed grid over the world, so only the four quarters of one cell can ever be combined into a bigger cell.</p>
+  <div class="player"></div>
+</section>
+<!-- END a6 -->
+
+<!-- BEGIN a1 -->
+<section class="anim-group" id="g1">
+  <h2>2. Where the density of a cell comes from</h2>
+  <p>The density of a cell is read from a population map of the year 2000. Inside each smallest cell the game places 16 evenly spaced measuring points. For each point it looks half a pixel up and to the left on the map and reads the pixel found there. The cell's density is the mean of the 16 numbers, in MU per km².</p>
+  <div class="anim" id="a1g" data-trace="traces/a1g.json">
+    <h3>General example</h3>
+    <div class="player"></div>
+  </div>
+  <div class="anim" id="a1" data-trace="traces/a1.json">
+    <h3>A real cell in Munich</h3>
+    <div class="player"></div>
+  </div>
+</section>
+<!-- END a1 -->
+
 <!-- BEGIN a0 -->
 <section class="anim" id="a0" data-trace="traces/a0.json">
-  <h2>1. The big picture</h2>
+  <h2>3. The big picture</h2>
   <p>The game lays a grid of cells over your field. Each cell has a density: how many MU one km² in that cell is worth. The part of your field in each cell is multiplied by that cell's density, and the results are added up and rounded.</p>
   <div class="player"></div>
 </section>
@@ -64,7 +87,7 @@
 
 <!-- BEGIN a2 -->
 <section class="anim" id="a2" data-trace="traces/a2.json">
-  <h2>2. A field inside one cell</h2>
+  <h2>4. A field inside one cell</h2>
   <p>This small field lies inside a single smallest cell. Its MU is the area of the field times the density of the whole cell.</p>
   <div class="player"></div>
 </section>
@@ -72,7 +95,7 @@
 
 <!-- BEGIN a5 -->
 <section class="anim-group" id="g5">
-  <h2>3. A smaller field with more MU</h2>
+  <h2>5. A smaller field with more MU</h2>
   <p>A small field inside a big one can earn more MU than the big one. A big field has to use big cells, and a big cell averages a crowded place with its quiet surroundings. A small field can use a small cell and keeps the crowded value.</p>
   <div class="anim" id="a5g" data-trace="traces/a5g.json">
     <h3>Simple example</h3>
@@ -85,17 +108,9 @@
 </section>
 <!-- END a5 -->
 
-<!-- BEGIN a6 -->
-<section class="anim" id="a6" data-trace="traces/a6.json">
-  <h2>4. Why cells have different sizes</h2>
-  <p>Cells come in many sizes. Cutting a cell into four quarters, again and again, gives smaller and smaller cells. The level of a cell says how many cuts it took, so a higher level means a smaller cell.</p>
-  <div class="player"></div>
-</section>
-<!-- END a6 -->
-
 <!-- BEGIN a3 -->
 <section class="anim" id="a3" data-trace="traces/a3.json">
-  <h2>5. Big cells inside, small cells at the edge</h2>
+  <h2>6. Big cells inside, small cells at the edge</h2>
   <p>The game prefers big cells where it can. When all four quarters of a cell are needed, it uses the whole cell instead. Inside the field that changes almost nothing; at the edge it can change the MU noticeably.</p>
   <div class="player"></div>
 </section>
@@ -103,26 +118,11 @@
 
 <!-- BEGIN a4 -->
 <section class="anim" id="a4" data-trace="traces/a4.json">
-  <h2>6. The budget of 20 cells</h2>
-  <p>A field is described by at most 20 cells. A big field therefore gets big cells that stick out of the field, and each of them counts with the density of the whole cell. This animation shows how the game picks the cells: it splits cells into quarters (see animation 4) until the limit of 20 is reached.</p>
+  <h2>7. The budget of 20 cells</h2>
+  <p>A field is described by at most 20 cells. A big field therefore gets big cells that stick out of the field, and each of them counts with the density of the whole cell. This animation shows how the game picks the cells: it splits cells into quarters (see "Why cells have different sizes" and "Big cells inside, small cells at the edge") until the limit of 20 is reached.</p>
   <div class="player"></div>
 </section>
 <!-- END a4 -->
-
-<!-- BEGIN a1 -->
-<section class="anim-group" id="g1">
-  <h2>7. Where the density of a cell comes from</h2>
-  <p>The density of a cell is read from a population map of the year 2000. Inside each smallest cell the game places 16 evenly spaced measuring points, reads the map at each point and takes the mean. The result is the cell's density, in MU per km².</p>
-  <div class="anim" id="a1g" data-trace="traces/a1g.json">
-    <h3>General example</h3>
-    <div class="player"></div>
-  </div>
-  <div class="anim" id="a1" data-trace="traces/a1.json">
-    <h3>A real cell in Munich</h3>
-    <div class="player"></div>
-  </div>
-</section>
-<!-- END a1 -->
 </main>
 <footer>
   Independent reconstruction; not affiliated with or endorsed by Niantic. Based on Gordon Ludlow's <a href="https://gordonludlow.com/ingress/reverse-engineering-mu/">Reverse Engineering MU</a>. Population data: Global Rural-Urban Mapping Project, Version 1 (GRUMP v1), CIESIN / NASA SEDAC. Source and API description: <a href="https://github.com/InvestigateXM/Ingress-MU-calculation">GitHub</a>.
