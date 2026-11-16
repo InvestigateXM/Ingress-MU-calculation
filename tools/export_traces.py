@@ -2,11 +2,19 @@
 
 Every number shown by the animation page is computed here by the shipped
 calculator (mu_calculator) for a fixed set of example fields and written to
-site/traces/a1.json .. a5.json. The page itself only draws these files.
+site/traces/<id>.json, one builder module per trace in tools/anim/. The page
+itself only draws these files. Traces marked "schematic" are made-up teaching
+examples and use no population data.
 
-Usage (Linux; needs the population rasters, see README):
+Usage:
 
-    GRUMP_DIR=/path/to/grump/bil python tools/export_traces.py [--out site/traces] [--check]
+    GRUMP_DIR=/path/to/grump/bil python tools/export_traces.py [--record] [--check] [ids]
+
+With GRUMP_DIR (Linux, needs the population rasters, see README) densities are
+read from the rasters; --record also rewrites tools/trace_data.json, the small
+file of densities and pixel counts the builders use. Without GRUMP_DIR the
+export replays that file, so the traces can be rebuilt without the rasters;
+coverings, overlaps, regions and rounding are always computed by the calculator.
 
 --check recomputes everything and compares it with the files in --out instead
 of writing them. The export fails if an example no longer gives its expected MU.
