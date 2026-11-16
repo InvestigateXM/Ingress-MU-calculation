@@ -60,6 +60,7 @@ button {
 }
 button[disabled] { opacity: .6; cursor: wait; }
 .hint { color: var(--muted); font-size: .9rem; }
+.eli5 { margin: 1rem 0 0; padding: .6rem .9rem; border-left: 3px solid var(--accent); background: var(--code-bg); }
 .actions { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-top: 16px; }
 #error { background: var(--err-bg); color: var(--err); padding: 10px 12px; border-radius: 4px; margin-top: 16px; }
 #result { margin-top: 24px; }
