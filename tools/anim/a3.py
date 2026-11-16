@@ -20,95 +20,94 @@ def build_a3(calc):
         if why[c["id"]] != "inside":
             tr.poly(f"cp:{c['t']}", [proj.vec(v) for v in clip_vecs(pts, c["id"])], "cp")
     tr.poly("fld", [proj.ll(p[0] / 1e6, p[1] / 1e6) for p in pts])
-    inside12 = [c for c in f["cells"] if c["lv"] == 12 and why[c["id"]] == "inside"]
-    merged12 = [c for c in f["cells"] if c["lv"] == 12 and why[c["id"]] == "merged"]
-    assert inside12 and merged12
+    cells12 = [c for c in f["cells"] if c["lv"] == 12]
+    cells13 = [c for c in f["cells"] if c["lv"] == 13]
+    inside12 = [c for c in cells12 if why[c["id"]] == "inside"]
+    merged12 = [c for c in cells12 if why[c["id"]] == "merged"]
+    assert inside12 and merged12 and len(cells12) == len(inside12) + len(merged12)
     big = inside12[0]
-    # children of the fully contained cell
-    kid_rows = []
-    kids = [ch.id() for ch in CellId(big["id"]).children()]
-    kov = overlaps(pts, kids)[0]
-    for (cid, _, ov), kid in zip(kov, kids):
-        d = calc.mean_density(kid)
-        a = cell_area_km2(kid)
-        assert math.isclose(ov, a, rel_tol=1e-9), "child not completely inside"
-        tr.poly(f"k:{tok(kid)}", poly(kid), "k")
-        cell_label(tr, f"kt:{tok(kid)}", kid, proj, fmt(d, 1), "kt")
-        kid_rows.append([tok(kid), a, ov, d, ov * d])
-    sum_kids = sum(r[4] for r in kid_rows)
+    bm = min(merged12, key=lambda c: abs(share(c) - 0.5))
+
+    # stage 1: the level-13 cells that touch the field (quarters of the level-12 cells)
+    quarters = {}
+    for c in cells12:
+        kids = [ch.id() for ch in CellId(c["id"]).children()]
+        kov = overlaps(pts, kids)[0]
+        assert len(kov) == 4 and all(ov > 0 for _, _, ov in kov)
+        rows = []
+        for (_, _, ov), kid in zip(kov, kids):
+            d = calc.mean_density(kid) if c["t"] in (big["t"], bm["t"]) else float("nan")
+            tr.poly(f"q:{tok(kid)}", poly(kid), "q")
+            rows.append([tok(kid), cell_area_km2(kid), ov, d, ov * d])
+        quarters[c["t"]] = rows
+    n_small = len(cells13) + 4 * len(cells12)
+    # density labels on the quarters of the two cells that are explained
+    for key, nd_ in ((big["t"], 1), (bm["t"], 0)):
+        for r in quarters[key]:
+            cell_label(tr, f"qt:{r[0]}", cid_of(r[0]), proj, fmt(r[3], nd_), "qt")
+    kid_rows = quarters[big["t"]]
     mean_kids = sum(r[3] for r in kid_rows) / 4
     assert math.isclose(mean_kids, big["d"], rel_tol=1e-12)
+    sum_kids = sum(r[4] for r in kid_rows)
     merge_rows = kid_rows + [[big["t"] + " (parent)", big["area"], big["ov"], big["d"], big["c"]]]
-    tr.table("merge", ["Cell", "Area km²", "Overlap km²", "Density", "Contribution"], merge_rows, ["s", 5, 5, 3, 3])
-    diff = big["c"] - sum_kids
-    # a merged level-12 cell at the boundary
-    bm = min(merged12, key=lambda c: abs(share(c) - 0.5))
-    bkids = [ch.id() for ch in CellId(bm["id"]).children()]
-    bov = overlaps(pts, bkids)[0]
-    brows = []
-    for (cid, _, ov), kid in zip(bov, bkids):
-        d = calc.mean_density(kid)
-        tr.poly(f"b:{tok(kid)}", poly(kid), "b")
-        cell_label(tr, f"bt:{tok(kid)}", kid, proj, fmt(d, 0), "bt")
-        brows.append([tok(kid), cell_area_km2(kid), ov, d, ov * d])
+    brows = quarters[bm["t"]]
     bsum = sum(r[4] for r in brows)
-    brows.append([bm["t"] + " (parent)", bm["area"], bm["ov"], bm["d"], bm["c"]])
-    tr.table("bmerge", ["Cell", "Area km²", "Overlap km²", "Density", "Contribution"], brows, ["s", 5, 5, 3, 3])
-    # a boundary cell at level 13
-    cand = [c for c in f["cells"] if c["lv"] == 13 and 0.3 < share(c) < 0.7]
-    b13 = max(cand, key=lambda c: c["d"])
-    tr.table("cells", CELL_HEAD, field_rows(f), CELL_FMT)
     nin = sum(1 for c in f["cells"] if why[c["id"]] == "inside")
-    n12, n13 = sum(1 for c in f["cells"] if c["lv"] == 12), sum(1 for c in f["cells"] if c["lv"] == 13)
-    tr.legend = {"p:field": "Field (triangle)", "p:in": "Cell completely inside the field",
-                 "p:merged": "Level-12 cell cut by the field edge (four children final)",
-                 "p:edge": "Level-13 cell cut by the field edge", "p:clip": "Part of a cell inside the field",
-                 "p:cell": "Cell outline"}
-    states_all = {f"c:{c['t']}": STATE_OF[why[c["id"]]] for c in f["cells"]}
-    tr.step(f"An example field of {f['area']:.2f} km² ({'; '.join(coord_str(p) for p in pts)}).", {"fld": "field"})
-    tr.step(f"The covering has {len(f['cells'])} cells: {n12} at level 12 and {n13} at level 13. One level-12 cell, {big['t']}, lies "
-            f"completely inside the field. Two more level-12 cells, {', '.join(c['t'] for c in merged12)}, are cut by the field edge.",
-            dict(states_all))
-    tr.step(f"A cell that lies completely inside the field is not divided further. {big['t']} is one cell of level 12, with an area of "
-            f"{big['area']:.3f} km². It has four level-13 children, which also lie completely inside the field. "
-            f"The covering contains the parent, not the four children.",
-            {"@c": "cell", f"c:{big['t']}": "in", "@k": "cell"})
-    tr.step(f"Density of the parent: the mean of its 64 sample points. Each level-13 child has 16 of these 64 points, so the mean of "
-            f"the four child densities is the same number: {fmt(big['d'], 3)}. The values on the children are their densities.",
-            {"@kt": "t"}, tb=["merge", 5, None],
-            eq=f"({' + '.join(fmt(r[3], 3) for r in kid_rows)}) / 4 = {fmt(mean_kids, 3)} = density of {big['t']}")
-    rel = abs(diff) / big["c"]
-    tr.step(f"For a cell completely inside the field, the overlap of the parent is "
-            f"the sum of the overlaps of its children, and its density is their mean. The two contributions differ by {fmt(abs(diff), 4)} "
-            f"({rel * 100:.3f} %) only because the four children are not exactly equal in area.",
-            {}, tb=["merge", 5, None],
-            eq=f"parent: {fmt(big['c'], 3)}    four children: {fmt(sum_kids, 3)}")
-    st = {"@k": "", "@kt": "", f"cp:{b13['t']}": "clip", f"c:{b13['t']}": "edge"}
-    tr.step(f"Cells at the field edge. The level-13 cell {b13['t']} is cut by the edge of the field: {share(b13) * 100:.0f} % of its area "
-            f"({b13['ov']:.4f} of {b13['area']:.4f} km²) lies inside. Its density, {fmt(b13['d'], 3)}, is still the mean over its 16 sample "
-            f"points, inside and outside the field.", st,
-            eq=f"{b13['ov']:.5f} km² × {fmt(b13['d'], 3)} = {fmt(b13['c'], 3)}")
-    st = {"@cp": "", f"c:{b13['t']}": "cell", f"c:{bm['t']}": "merged", f"cp:{bm['t']}": "clip", "@b": "cell", "@bt": "t"}
-    tr.step(f"The level-12 cell {bm['t']} is also cut by the edge. All four level-13 children touch the field and are final, so the "
-            f"covering uses the parent. Its density, {fmt(bm['d'], 3)}, is the mean of the children's densities (shown). "
-            f"Here the cell is clipped unevenly: the four children with their own overlaps would sum to {fmt(bsum, 3)} instead of "
-            f"{fmt(bm['c'], 3)}. At the edge the merge changes the number.", st, tb=["bmerge", 5, None],
-            eq=f"parent: {fmt(bm['ov'], 5)} km² × {fmt(bm['d'], 3)} = {fmt(bm['c'], 3)}")
-    st = {"@b": "", "@bt": "", "@c": "cell"}
+    n12, n13 = len(cells12), len(cells13)
+    tr.legend = {"p:field": "Field (triangle)", "p:cell": "Smallest cell (level 13) touching the field",
+                 "p:hl": "Four quarters that are all needed", "p:in": "Whole cell used, completely inside the field",
+                 "p:merged": "Whole cell used, cut by the field edge",
+                 "p:edge": "Smallest cell, cut by the field edge", "p:clip": "Part of a cell inside the field"}
+    q_of = lambda key: {f"q:{r[0]}": None for r in quarters[key]}
+    qs = lambda key, st: {k: st for k in q_of(key)}
+    start = {f"c:{c['t']}": "cell" for c in cells13}
+    for c in cells12:
+        start.update(qs(c["t"], "cell"))
+    tr.step(f"This example field covers {f['area']:.1f} km². The game covers it with big cells where it can and small cells at the edge.", {"fld": "field"})
+    tr.step(f"First the game finds every smallest cell (level 13) that touches the field. There are {n_small} of them.", start)
+    st = {**qs(big["t"], "hl"), "@qt": ""}
+    st.update({f"qt:{r[0]}": "t" for r in kid_rows})
+    tr.step("In the middle, all four quarters of one cell are needed. When all four quarters of a cell are needed, the game uses the whole cell instead.", st)
+    rel = abs(big["c"] - sum_kids) / big["c"]
+    st = {f"c:{big['t']}": "in", **qs(big["t"], "cell")}
+    tr.step(f"The whole cell is used (yellow). Its density is the mean of its four quarters: {fmt(big['d'], 1)} = mean of "
+            f"{', '.join(fmt(r[3], 1) for r in kid_rows)}. Inside the field, merging changes almost nothing: "
+            f"{fmt(big['c'], 0)} MU for the whole cell, {fmt(sum_kids, 0)} MU for the quarters.", st,
+            eq=f"whole cell: {fmt(big['c'], 3)} MU    four quarters counted separately: {fmt(sum_kids, 3)} MU  (differ by {rel * 100:.3f} %)")
+    st = {**qs(big["t"], ""), **{f"qt:{r[0]}": "" for r in kid_rows}, **qs(bm["t"], "hl")}
+    st.update({f"qt:{r[0]}": "t" for r in brows})
+    tr.step("Now a cell at the edge of the field. Its four quarters are all needed too, so the same rule applies.", st)
+    st = {f"c:{bm['t']}": "merged", f"cp:{bm['t']}": "clip", **qs(bm["t"], "cell")}
+    tr.step(f"The game uses {fmt(bm['c'], 0)} MU, the merged cell. Counting the four quarters separately would give {fmt(bsum, 0)}. "
+            f"Here the field cuts the cell unevenly, so merging does change the number.", st,
+            eq=f"whole cell: {bm['ov']:.5f} km² × {fmt(bm['d'], 3)} = {fmt(bm['c'], 3)} MU    four quarters: {fmt(bsum, 3)} MU")
+    st = {**qs(bm["t"], ""), "@qt": ""}
     for c in f["cells"]:
         st[f"c:{c['t']}"] = STATE_OF[why[c["id"]]]
         if why[c["id"]] != "inside":
             st[f"cp:{c['t']}"] = "clip"
-    tr.step(f"All {len(f['cells'])} contributions (overlap × density). The overlaps add up to "
-            f"the area of the field, {f['area']:.5f} km².", st, tb=["cells", len(f["cells"]), None])
-    finish_steps(tr, f, "a3",
-                 f"Contributions are added per level-6 region (a cell of about 140 km edge length). "
-                 f"{len(f['regions'])} region{'s are' if len(f['regions']) > 1 else ' is'} touched. A region sum below 1 would be raised to 1; none is.",
-                 "The total is rounded once, half up.", "regions")
+    for c in cells12:
+        st.update(qs(c["t"], ""))
+    nreg = len(f["regions"])
+    regs = sorted(f["regions"].items())
+    rrows = [[k, sum(1 for c in f["cells"] if c["reg"] == k), v, max(1, v)] for k, v in regs]
+    tr.table("regions", ["Large region", "Cells", "Sum of contributions", "After minimum of 1"], rrows, ["s", 0, 3, 3])
+    tr.step(f"The final covering has {len(f['cells'])} cells. Each gives its part of the field × its density; together they come to "
+            f"{fmt(f['total'], 2)} MU in total. Each large region gives at least 1 MU, "
+            f"{'and the one region here is far above that' if nreg == 1 else 'which makes no difference here'}.",
+            st, tb=["regions", len(rrows), None],
+            eq=f"sum of {len(f['cells'])} contributions = {fmt(f['total'], 3)}")
+    tr.step(f"The game rounds to whole Mind Units: {fmt(f['total'], 2)} becomes {fmt(f['mu'], 0)} MU.", {},
+            tb=["regions", len(rrows), None],
+            eq=f"round half up({fmt(f['total'], 3)}) = {fmt(f['mu'], 0)} MU")
+    tr.table("cells", CELL_HEAD, field_rows(f), CELL_FMT)
+    tr.table("merge", ["Cell", "Area km²", "Overlap km²", "Density", "Contribution"], merge_rows, ["s", 5, 5, 3, 3])
     tr.extra["summary"] = [
         ["Portals", "; ".join(coord_str(p) for p in pts)], ["Area", f"{f['area']:.6f} km²"],
         ["Covering", f"{len(f['cells'])} cells: {n12} at level 12, {n13} at level 13"],
         ["Completely inside", f"{nin} cell ({big['t']})"],
+        ["Mean of the four quarters of " + big["t"], fmt(mean_kids, 3)],
+        ["Edge cell " + bm["t"] + ": whole / four quarters", f"{fmt(bm['c'], 3)} / {fmt(bsum, 3)}"],
         ["Sum of contributions", fmt(f["total"], 6)], ["MU", fmt(f["mu"], 0)],
     ]
     tr.extra["cells"] = {"head": CELL_HEAD, "rows": field_rows(f), "fmt": CELL_FMT}

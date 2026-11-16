@@ -43,35 +43,54 @@ def build_a2(calc):
     out_ids = [f"d:{i}" for i in range(16) if not inside[i]]
     dens = cell["d"]
     area = f["area"]
-    reg = cell["reg"]
     nvals = sorted(nd.values())
-    tr.legend = {"p:field": "Field (triangle)", "p:hl": "Level-13 cell of the field", "p:cell": "Neighbouring level-13 cell", "d:in": "Sample point inside the field",
-                 "d:out": "Sample point outside the field", "p:clip": "Overlap of field and cell"}
-    tr.step(f"An example field with three portals ({'; '.join(coord_str(p) for p in A2_FIELD)}). Its area is {area:.4f} km², "
-            f"about {area * 100:.0f} hectares.", {"fld": "field", "vA": "dot", "vB": "dot", "vC": "dot", "tA": "t", "tB": "t", "tC": "t"})
-    tr.step(f"The covering of the field is a single cell: level 13, token {cell['t']}, area {cell['area']:.3f} km². "
-            f"Level 13 is the finest level that is used, so a field this small is not split further.", {"c13": "hl"})
-    s = {i: "in" for i in in_ids}
-    s.update({i: "out" for i in out_ids})
-    s["c13"] = "hl"
-    tr.step(f"The cell has 16 sample points (the level-15 cell centres). {k_in} of them lie inside the field, {16 - k_in} outside. "
-            f"All 16 enter the density.", s)
-    tr.step(f"The density of the cell is the mean over all 16 sample points, {fmt(dens, 3)}. It is the same cell as in the first "
-            f"animation. The part of the cell under the field does not change it.", {}, eq=f"density = mean of 16 samples = {fmt(dens, 3)}")
-    tr.step(f"The density belongs to the cell, not to the spot where the field lies. The eight neighbouring level-13 cells have "
-            f"densities from {fmt(nvals[0], 1)} to {fmt(nvals[-1], 1)}; a field of the same size in one of them would get "
-            f"that cell's density.", {"@nb": "cell", "@nt": "t"})
-    tr.step(f"The overlap of the field and the cell is the whole field: {area:.6f} km².", {"clip": "clip", "@nb": "", "@nt": ""},
-            eq=f"overlap = {area:.6f} km²")
-    tr.step("Contribution of the cell = overlap × density.", {}, eq=f"{area:.6f} km² × {fmt(dens, 3)} = {fmt(area * dens, 3)}")
-    finish_steps(tr, f, "a2",
-                 f"The cell lies in one level-6 region, {reg}. The sum of the region is {fmt(f['total'], 3)}. The minimum of 1 per region "
-                 f"only applies when a region sum is below 1; here it is not.",
-                 f"The total is rounded once, half up, to the Mind Units of the field.", "regions")
+    # the same triangle slid into the neighbour with the highest density
+    best = max(nbs, key=lambda n: nd[n])
+    assert nd[best] == nvals[-1] and nd[best] > 1500 and tok(best) in ("479e0b2c",)
+
+    def centre(c_):
+        ll = s2sphere.LatLng.from_point(CellId(c_).to_point())
+        return ll.lat().degrees, ll.lng().degrees
+    (la0, lo0), (la1, lo1) = centre(cid), centre(best)
+    dl, dg = round((la1 - la0) * 1e6), round((lo1 - lo0) * 1e6)
+    moved = [(p[0] + dl, p[1] + dg) for p in A2_FIELD]
+    f2 = calc.field(moved)
+    assert len(f2["cells"]) == 1 and f2["cells"][0]["id"] == best
+    area2, mu2 = f2["area"], f2["cells"][0]["c"]
+    assert round_half_up(f2["total"]) == 303
+    tr.poly("fld2", [proj.ll(p[0] / 1e6, p[1] / 1e6) for p in moved])
+    mid = lambda pts_: [sum(proj.ll(p[0] / 1e6, p[1] / 1e6)[k] for p in pts_) / 3 for k in (0, 1)]
+    tr.line("mv", mid(A2_FIELD), mid(moved))
+    tr.legend = {"d:dot": "Portal", "d:in": "Measuring point", "p:field": "Field (triangle)",
+                 "p:field2": "The same field, moved", "p:hl": "Cell of the field",
+                 "p:hl2": "Neighbouring cell with the highest density", "p:cell": "Neighbouring cell",
+                 "p:clip": "Part of the field inside the cell"}
+    tr.step(f"A field is the triangle between three portals. This small one covers {area:.2f} km², about {area * 100:.0f} hectares.",
+            {"fld": "field", "vA": "dot", "vB": "dot", "vC": "dot", "tA": "t", "tB": "t", "tC": "t"})
+    tr.step(f"The game describes this field with a single cell, the orange one. It is the smallest size of cell the game uses, "
+            f"{cell['area']:.2f} km² in area, so a field this small is not split further.", {"c13": "hl"})
+    s = {f"d:{i}": "in" for i in range(16)}
+    tr.step("The game measures the population at 16 evenly spaced points in the cell. All 16 count, inside or outside the field.", s)
+    tr.step(f"The density of the cell is the mean of its 16 measurements, {fmt(dens, 1)} MU per km². This is the same cell as in the "
+            f"real example of the last animation, \"Where the density of a cell comes from\".", {},
+            eq=f"density = mean of 16 points = {fmt(dens, 3)} MU per km²")
+    tr.step(f"The density belongs to the cell, not to the spot where the field lies. The eight neighbouring cells have densities "
+            f"from {fmt(nvals[0], 0)} to {fmt(nvals[-1], 0)} MU per km² (shown).", {"@nb": "cell", "@nt": "t"})
+    tr.step(f"Slide the same field into the neighbour with the highest density, {fmt(nd[best], 1)} MU per km². "
+            f"The field is unchanged, but it is now worth about {mu2:.0f} MU instead of {fmt(f['mu'], 0)}.",
+            {"fld2": "field2", "mv": "move", f"nb:{tok(best)}": "hl2"},
+            eq=f"{area2:.3f} km² × {fmt(nd[best], 1)} = {fmt(mu2, 1)} MU (instead of {fmt(area * dens, 1)})")
+    tr.step(f"Back to the real field. The whole field lies in the cell, so MU before rounding = part of the field in the cell × density.",
+            {"fld2": "", "mv": "", "@nb": "", "@nt": "", "clip": "clip"},
+            eq=f"{area:.6f} km² × {fmt(dens, 3)} = {fmt(area * dens, 3)}")
+    tr.step(f"The game rounds to whole Mind Units: {fmt(f['total'], 1)} becomes {fmt(f['mu'], 0)} MU.", {},
+            eq=f"round half up({fmt(f['total'], 3)}) = {fmt(f['mu'], 0)} MU")
     tr.extra["summary"] = [
         ["Portals", "; ".join(coord_str(p) for p in A2_FIELD)], ["Area", f"{area:.6f} km²"],
-        ["Covering", f"1 cell, level 13, {cell['t']}"], ["Sample points inside the field", f"{k_in} of 16"],
-        ["Density", fmt(dens, 6)], ["Contribution", fmt(area * dens, 6)], ["MU", fmt(f["mu"], 0)],
+        ["Covering", f"1 cell, level 13, {cell['t']}"], ["Measuring points inside the field", f"{k_in} of 16 (all 16 count)"],
+        ["Density", fmt(dens, 6) + " MU per km²"], ["MU before rounding", fmt(area * dens, 6)],
+        ["Same field moved into the neighbour " + tok(best), f"{fmt(mu2, 3)} MU before rounding, {round_half_up(f2['total'])} MU"],
+        ["MU", fmt(f["mu"], 0)],
     ]
     tr.extra["cells"] = {"head": CELL_HEAD, "rows": field_rows(f), "fmt": CELL_FMT}
     tr.extra["check"] = check_block(f)

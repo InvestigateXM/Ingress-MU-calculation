@@ -117,7 +117,7 @@ function build(root, tr) {
     for (const field of ['F', 'G']) {
       const c = tr.comparison[field];
       comparison.appendChild(h('p', { class: 'comparison-numbers', 'data-field': field },
-        `${field}: ${c.token}, level ${c.level} — density ${num(c.density, 1)} × overlap ${num(c.overlap, 0)} km² ≈ ${num(c.contribution, 0)} MU`));
+        `Field ${field}, orange cell: ${num(c.overlap, 0)} km² of the field × ${num(c.density, 1)} MU per km² ≈ ${num(c.contribution, 0)} MU`));
     }
     wrap.insertBefore(comparison, legend);
   }
@@ -338,12 +338,12 @@ function render(ui, tr, k) {
   if (b) {
     const total = b.r + b.q + b.k;
     const slots = Math.max(b.max, total);
-    const bar = h('div', { class: 'slots', role: 'img', 'aria-label': `Budget: result ${b.r}, queue ${b.q}, children ${b.k}; total ${total} of ${b.max}` });
+    const bar = h('div', { class: 'slots', role: 'img', 'aria-label': `Budget: ${b.r} cells kept, ${b.q} still to check, ${b.k} new quarters; ${total} of ${b.max}` });
     for (let i = 0; i < slots; i++) {
       const cls = i < b.r ? 'res' : i < b.r + b.q ? 'que' : 'kid';
       bar.appendChild(h('span', { class: 'slot ' + cls + (i >= b.max ? ' over' : '') + (i === b.max ? ' edge' : '') }));
     }
-    const legend = h('p', { class: 'hint' }, `Result ${b.r} (solid), queue ${b.q} (outlined), children ${b.k} (dotted); the limit is ${b.max}.`);
+    const legend = h('p', { class: 'hint' }, `Cells kept ${b.r} (solid), cells still to check ${b.q} (outlined), new quarters if this cell is split ${b.k} (dotted); the limit is ${b.max}.`);
     ui.bud.replaceChildren(h('p', { class: 'bt' }, `${b.r} + ${b.q} + ${b.k} = ${total} ${total <= b.max ? '≤' : '>'} ${b.max}`), bar, legend);
   }
   // table

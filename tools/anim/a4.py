@@ -40,9 +40,10 @@ def build_a4(calc):
 
     by_id = {c["id"]: c for c in f["cells"]}
     polls = [k for e, k in events if e == "poll"]
-    tr.legend = {"p:field": "Field (triangle)", "p:cap": "Bounding circle of the field", "p:wait": "Cell waiting in the queue",
-                 "p:poll": "Cell taken from the queue now", "p:done": "Cell that has been split", "p:in": "Final: completely inside the field",
-                 "p:edge": "Final: level 13", "p:kept": "Final: kept whole because of the budget", "p:miss": "Child that misses the field",
+    tr.legend = {"p:field": "Field (triangle)", "p:cap": "Smallest circle around the field", "p:wait": "Cell still to be checked",
+                 "p:poll": "Cell being checked now", "p:done": "Cell that has been split", "p:in": "Final: completely inside the field",
+                 "p:edge": "Final: smallest size (level 13)", "p:kept": "Final: kept whole because of the budget",
+                 "p:miss": "Quarter that misses the field",
                  "p:clip": "Part of a cell inside the field", "p:heat": "Cell shaded by its density"}
     pos = 0
 
@@ -57,72 +58,86 @@ def build_a4(calc):
                 ops[ensure(k["cid"])] = STATE_OF[k["why"]]
             pos += 1
 
-    # initial step
-    pos = 1
-    ops = {}
-    for cid in start["initial"]:
-        ops[ensure(cid)] = "miss"
-    run_events(ops)
-    n_start = sum(1 for v in ops.values() if v != "miss")
-    a_km = start["angle"] * RE
-    tr.step(f"An example field of {f['area']:.1f} km² ({'; '.join(coord_str(p) for p in pts)}). The cells used to compute its MU "
-            f"are chosen by a covering with a budget of 20 cells.", {"fld": "field"})
-    tr.step(f"The bounding circle of the field has a radius of {a_km:.1f} km. From it the start level {start['level']} follows. "
-            f"The covering starts with the cells of level {start['level']} around the cell corner nearest the centre of the circle; "
-            f"{n_start} of the {len(start['initial'])} touch the field and wait in the queue.",
-            dict({"cap": "cap"}, **ops))
-    prev = None
-    for n, p in enumerate(polls, 1):
-        ops = {}
-        if prev is not None and prev["state"] != "kept":
-            ops[prev["el"]] = "done"
-        el = ensure(p["cid"])
-        ops[el] = "poll"
-        touching = {c for c, _ in p["children"]}
-        if p["expand"]:
-            for ch in CellId(p["cid"]).children():
-                ops[ensure(ch.id())] = "miss"
-        run_events(ops)
-        lvl = CellId(p["cid"]).level()
-        k = len(p["children"])
-        total = p["result"] + p["queue"] + k
-        if k == 1:
-            dec = "Only one child touches the field, so the cell is always split."
-        elif p["expand"]:
-            dec = f"{total} ≤ 20: the cell is split."
-        else:
-            dec = f"{total} > 20: the cell is kept whole."
-        cap = (f"Poll {n} of {len(polls)}: cell {tok(p['cid'])}, level {lvl}, {k} of its 4 children {'touches' if k == 1 else 'touch'} the field. "
-               f"Result {p['result']} + queue {p['queue']} + children {k} = {total}. {dec}")
-        if n == 1:
-            cap += " Cells with equal priority leave the queue in the order of a binary heap (see Method)."
-        if not p["expand"]:
-            ops[el] = "kept"
-        tr.step(cap, ops, bud={"r": p["result"], "q": p["queue"], "k": k, "max": 20, "go": bool(p["expand"] or k == 1)})
-        prev = {"el": el, "state": "kept" if not p["expand"] else "poll"}
-    if prev and prev["state"] != "kept":
-        pass
     cells = f["cells"]
     count = {}
     for c in cells:
         count[STATE_OF[why[c["id"]]]] = count.get(STATE_OF[why[c["id"]]], 0) + 1
+    nk = count.get("kept", 0)
+    final_state = {ensure(c["id"]): STATE_OF[why[c["id"]]] for c in cells}
     levels = {}
     for c in cells:
         levels[c["lv"]] = levels.get(c["lv"], 0) + 1
     lv_text = ", ".join(f"{v} at level {k}" for k, v in sorted(levels.items()))
+
+    # the full record of the checks, stored for the test (the steps below merge them)
+    record = [{"cell": tok(p["cid"]), "result": p["result"], "queue": p["queue"],
+               "children": [tok(c) for c, _ in p["children"]], "split": bool(p["expand"])} for p in polls]
+
+    # steps 1 and 2: the field and the outcome
+    tr.step(f"This example field covers {f['area']:,.0f} km² around Munich. How many MU is it worth?", {"fld": "field"})
+    tr.step(f"A big field is described by at most 20 cells, so the cells are big and stick out of the field. "
+            f"Here the field gets {len(cells)} cells.", dict(final_state))
+
+    # step 3: the start
+    pos = 1
+    ops = {ek: "" for ek in final_state}
+    for cid in start["initial"]:
+        ops[ensure(cid)] = "miss"
+    run_events(ops)
+    n_start = sum(1 for v in ops.values() if v not in ("miss", ""))
+    a_km = start["angle"] * RE
+    tr.step(f"How does the game choose these {len(cells)} cells? It starts with {n_start} large cells (level {start['level']}) that touch the field. "
+            f"The dotted circle, {a_km:.0f} km in radius, is the smallest circle around the field; its size decides how large the first cells are.",
+            dict({"cap": "cap"}, **ops))
+
+    # steps 4 to 7: the checks, merged into a few steps
+    n_first = 6
+    n_refuse = next(n for n, p in enumerate(polls, 1) if not p["expand"])
+    assert len(polls[n_first - 1]["children"]) == 4 and polls[n_first - 1]["expand"]
+    assert all(p["expand"] for p in polls[:n_refuse - 1])
+    prev = None
+    for lo, hi in [(1, n_first - 1), (n_first, n_first), (n_first + 1, n_refuse - 1), (n_refuse, n_refuse)]:
+        ops = {}
+        for n in range(lo, hi + 1):
+            p = polls[n - 1]
+            if prev is not None and prev["state"] != "kept":
+                ops[prev["el"]] = "done"
+            el = ensure(p["cid"])
+            ops[el] = "poll"
+            if p["expand"]:
+                for ch in CellId(p["cid"]).children():
+                    ops[ensure(ch.id())] = "miss"
+            run_events(ops)
+            if not p["expand"]:
+                ops[el] = "kept"
+            prev = {"el": el, "state": "kept" if not p["expand"] else "poll"}
+        p = polls[hi - 1]
+        k = len(p["children"])
+        total = p["result"] + p["queue"] + k
+        bud = {"r": p["result"], "q": p["queue"], "k": k, "max": 20, "go": bool(p["expand"] or k == 1), "n": hi}
+        if hi == n_first - 1:
+            cap = ("The game takes the waiting cells one at a time and splits each into 4 quarters, keeping only the quarters that touch the field. "
+                   "A cell that only touches the field with one quarter is always split, since that does not add a cell.")
+            bud = None
+        elif hi == n_first:
+            cap = (f"The orange cell is split into its 4 quarters, and all 4 touch the field. The bar counts the cells the field would have after the split: "
+                   f"finished cells (solid), cells still waiting (outlined) and the new quarters (dotted). {total} is within the limit of 20, so the split goes ahead.")
+        elif hi == n_refuse - 1:
+            cap = f"The game keeps splitting cells into quarters. After {hi} checks the bar has reached {total} of the 20 cells allowed."
+        else:
+            cap = (f"The next cell (hatched) would bring the total to {total}, over the limit of 20, so it stays whole. "
+                   f"The game keeps splitting cells into quarters until splitting the next one would push it past 20 cells.")
+        tr.step(cap, ops, bud=bud)
+    assert not any(p["expand"] for p in polls[n_refuse - 1:])
+    last = polls[-1]
     st = {"cap": ""}
-    st.update({ensure(c["id"]): STATE_OF[why[c["id"]]] for c in cells})
+    st.update(final_state)
     for cid, el in seen.items():
         if cid not in by_id:
             st[el] = ""
-    nk = count.get("kept", 0)
-    tr.step(f"The queue is empty. The covering has {len(cells)} cells ({lv_text}). {nk} of them were kept whole because the budget was "
-            f"used up, {count.get('in', 0)} {'lies' if count.get('in', 0) == 1 else 'lie'} completely inside the field and {count.get('edge', 0)} "
-            f"{'is' if count.get('edge', 0) == 1 else 'are'} at level 13.", st)
-    areas = sorted(c["area"] for c in cells)
-    tr.step(f"Cell size compared with field size: the field has {f['area']:.0f} km², the cells have {areas[0]:.0f} to {areas[-1]:.0f} km², "
-            f"between 1/{f['area'] / areas[0]:.0f} and 1/{f['area'] / areas[-1]:.0f} of the field. The budget does not allow cells small enough "
-            f"to follow the field edge.", {})
+    tr.step(f"The remaining {len(polls) - n_refuse} cells are kept whole the same way. That gives the {len(cells)} cells from the start: "
+            f"{nk} kept whole because of the budget and {count.get('in', 0)} completely inside the field.", st,
+            bud={"r": last["result"], "q": last["queue"], "k": len(last["children"]), "max": 20, "go": False, "n": len(polls)})
     bnd = [c for c in cells if why[c["id"]] != "inside"]
     for c in bnd:
         tr.poly(f"cp:{c['t']}", [proj.vec(v) for v in clip_vecs(pts, c["id"])], "cp")
@@ -132,9 +147,9 @@ def build_a4(calc):
     tot_area = sum(c["area"] for c in bnd)
     st = {f"cp:{c['t']}": "clip" for c in bnd}
     st.update({f"sh:{c['t']}": "t" for c in bnd})
-    tr.step(f"Part of each cell inside the field (percentage of the cell area). {len(bnd)} cells are cut by the field edge. Together "
-            f"they have {tot_area:,.0f} km², of which {inside_area:,.0f} km² ({inside_area / tot_area * 100:.0f} %) lie inside the field. "
-            f"Cell {low['t']} has only {share(low) * 100:.0f} % inside.", st)
+    st[seen[low["id"]]] = "hl"
+    tr.step(f"Most cells stick out of the field. The numbers show how much of each cell lies inside the field. "
+            f"The orange cell at the top has only {share(low) * 100:.0f} % inside. Across the {len(bnd)} cells cut by the edge, {inside_area / tot_area * 100:.0f} % of their area is inside.", st)
     vals, (lo, hi) = bins([c["d"] for c in cells])
     tr.extra["bins"] = {seen[c["id"]]: b for c, b in zip(cells, vals)}
     tr.extra["ramp"] = {"label": "Density", "min": min(c["d"] for c in cells), "max": max(c["d"] for c in cells), "log": True}
@@ -144,28 +159,28 @@ def build_a4(calc):
     st.update({f"sh:{c['t']}": "" for c in bnd})
     st.update({seen[c["id"]]: "heat" for c in cells})
     st.update({f"dl:{c['t']}": "t" for c in cells})
-    nsamp = 4 ** (15 - low["lv"])
-    tr.step(f"Density of each cell. It is the mean over all {nsamp:,} sample points of a level-{low['lv']} cell, inside and outside the "
-            f"field. In cell {low['t']}, {100 - share(low) * 100:.0f} % of the area lies outside the field, but its density, "
-            f"{fmt(low['d'], 1)}, is the density of the whole cell.", st)
+    tr.step(f"Each cell has one density (MU per km²), shown by its shade and number. It is the mean over the whole cell, "
+            f"including the part outside the field. A cell with {100 - share(low) * 100:.0f} % outside the field still counts with its full density.", st)
     tr.table("cells", CELL_HEAD, field_rows(f), CELL_FMT)
     st = {f"dl:{c['t']}": "" for c in cells}
     st.update({seen[c["id"]]: STATE_OF[why[c["id"]]] for c in cells})
     st.update({f"cp:{c['t']}": "clip" for c in bnd})
-    tr.step(f"Contribution of each cell = overlap × density. The overlaps add up to the area of the field, {f['area']:.3f} km².",
+    tr.step(f"Each cell gives (part inside the field) × (density). The table lists the contribution of every cell, in MU before rounding. "
+            f"The parts inside add up to the whole field, {f['area']:,.0f} km².",
             st, tb=["cells", len(cells), None])
     finish_steps(tr, f, "a4",
-                 f"Contributions are added per level-6 region. {len(f['regions'])} regions are touched; a region sum below 1 would be raised to 1, "
-                 f"none is.", "The total is rounded once, half up.", "regions")
+                 f"The contributions are added up per large region ({len(f['regions'])} here), and each large region gives at least 1 MU. "
+                 f"Both regions are far above that.", f"The total is rounded once, to whole MU: {fmt(f['mu'], 0)} MU.", "regions")
     tr.extra["summary"] = [
         ["Portals", "; ".join(coord_str(p) for p in pts)], ["Area", f"{f['area']:.4f} km²"],
-        ["Start level", str(start["level"])], ["Polls", str(len(polls))],
+        ["Start level", str(start["level"])], ["Cells checked", str(len(polls))],
         ["Covering", f"{len(cells)} cells ({lv_text})"], ["Kept whole by the budget", str(nk)],
         ["Sum of contributions", fmt(f["total"], 6)], ["MU", fmt(f["mu"], 0)],
     ]
     tr.extra["cells"] = {"head": CELL_HEAD, "rows": field_rows(f), "fmt": CELL_FMT}
     tr.extra["check"] = check_block(f)
     tr.extra["check"]["start"] = {"level": start["level"], "polls": len(polls), "budget": 20}
+    tr.extra["check"]["polls"] = record
     return tr.finish(focus={"fld", "cap"} | {seen[c["id"]] for c in cells})
 
 

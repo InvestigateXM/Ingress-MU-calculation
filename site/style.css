@@ -169,7 +169,7 @@ table.sum th { font-weight: 600; background: none; white-space: nowrap; }
 .k-p[data-s=done] { stroke: var(--muted); stroke-width: .8px; }
 .k-p[data-s=miss] { stroke: var(--grid); stroke-width: .8px; stroke-dasharray: 1 4; }
 .k-p[data-s=in] { stroke: var(--c-merged); stroke-width: 1.8px; fill: var(--c-in); fill-opacity: .35; }
-.k-p[data-s=edge] { stroke: var(--c-edge); stroke-width: 2px; }
+.k-p[data-s=edge] { stroke: var(--c-edge); stroke-width: 1.4px; }
 .k-p[data-s=merged] { stroke: var(--c-merged); stroke-width: 2px; fill: var(--fill-merged, url(#hatch-merged)); }
 .k-p[data-s=kept] { stroke: var(--c-kept); stroke-width: 2.2px; fill: var(--fill-kept, url(#hatch-kept)); }
 .k-p[data-s=clip] { stroke: none; fill: var(--c-overlap); fill-opacity: .45; }

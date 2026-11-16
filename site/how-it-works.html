@@ -57,7 +57,7 @@
 <!-- BEGIN a0 -->
 <section class="anim" id="a0" data-trace="traces/a0.json">
   <h2>1. The big picture</h2>
-  <p>The game lays a grid of cells over your field. Each cell has a density: how many MU one km² in that cell is worth. The part of your field in each cell is multiplied by that cell's density, and the results are added up.</p>
+  <p>The game lays a grid of cells over your field. Each cell has a density: how many MU one km² in that cell is worth. The part of your field in each cell is multiplied by that cell's density, and the results are added up and rounded.</p>
   <div class="player"></div>
 </section>
 <!-- END a0 -->
@@ -73,7 +73,7 @@
 <!-- BEGIN a5 -->
 <section class="anim-group" id="g5">
   <h2>3. A smaller field with more MU</h2>
-  <p>A field that lies completely inside another field can earn more MU, because the two fields can use different cells for the same ground.</p>
+  <p>A small field inside a big one can earn more MU than the big one. A big field has to use big cells, and a big cell averages a crowded place with its quiet surroundings. A small field can use a small cell and keeps the crowded value.</p>
   <div class="anim" id="a5g" data-trace="traces/a5g.json">
     <h3>Simple example</h3>
     <div class="player"></div>
@@ -88,7 +88,7 @@
 <!-- BEGIN a6 -->
 <section class="anim" id="a6" data-trace="traces/a6.json">
   <h2>4. Why cells have different sizes</h2>
-  <p>Every cell splits into four smaller cells. The level of a cell says how often this has happened.</p>
+  <p>Cells come in many sizes. Cutting a cell into four quarters, again and again, gives smaller and smaller cells. The level of a cell says how many cuts it took, so a higher level means a smaller cell.</p>
   <div class="player"></div>
 </section>
 <!-- END a6 -->
@@ -104,7 +104,7 @@
 <!-- BEGIN a4 -->
 <section class="anim" id="a4" data-trace="traces/a4.json">
   <h2>6. The budget of 20 cells</h2>
-  <p>A field is described by at most 20 cells. A big field therefore gets big cells that stick out of the field, and each of them counts with the density of the whole cell.</p>
+  <p>A field is described by at most 20 cells. A big field therefore gets big cells that stick out of the field, and each of them counts with the density of the whole cell. This animation shows how the game picks the cells: it splits cells into quarters (see animation 4) until the limit of 20 is reached.</p>
   <div class="player"></div>
 </section>
 <!-- END a4 -->
@@ -112,13 +112,13 @@
 <!-- BEGIN a1 -->
 <section class="anim-group" id="g1">
   <h2>7. Where the density of a cell comes from</h2>
-  <p>The density of a cell is read from a population map of the year 2000. Inside each smallest cell the game places 16 evenly spaced measuring points, reads the map at each point and takes the mean.</p>
+  <p>The density of a cell is read from a population map of the year 2000. Inside each smallest cell the game places 16 evenly spaced measuring points, reads the map at each point and takes the mean. The result is the cell's density, in MU per km².</p>
   <div class="anim" id="a1g" data-trace="traces/a1g.json">
-    <h3>Simple example</h3>
+    <h3>General example</h3>
     <div class="player"></div>
   </div>
   <div class="anim" id="a1" data-trace="traces/a1.json">
-    <h3>Real example in Munich</h3>
+    <h3>A real cell in Munich</h3>
     <div class="player"></div>
   </div>
 </section>

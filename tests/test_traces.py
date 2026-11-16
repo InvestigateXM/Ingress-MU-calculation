@@ -60,7 +60,7 @@ def test_structure(name):
         assert forbidden not in text
 
 
-@pytest.mark.parametrize("name", ["a2", "a3", "a4", "a5"])
+@pytest.mark.parametrize("name", ["a0", "a2", "a3", "a4", "a5"])
 def test_fields(name):
     for block in field_blocks(LOAD[name]):
         pts = [tuple(p) for p in block["points_e6"]]
@@ -104,7 +104,7 @@ def test_fields(name):
 
 
 def test_summaries_state_the_mu():
-    for name in ("a2", "a3", "a4"):
+    for name in ("a0", "a2", "a3", "a4"):
         mu = field_blocks(LOAD[name])[0]["mu"]
         assert ["MU", f"{mu:,}"] in LOAD[name]["summary"]
     outer, inner = field_blocks(LOAD["a5"])
@@ -131,20 +131,34 @@ def test_nested_fields_a5():
 def test_a4_budget_trace():
     tr = LOAD["a4"]
     assert tr["check"]["start"]["budget"] == 20
-    polls = [s for s in tr["steps"] if "bud" in s]
+    record = tr["check"]["polls"]
     events = []
     cover(tr["check"]["points_e6"], observer=lambda e, **k: events.append((e, k)))
     actual = [k for e, k in events if e == "poll"]
-    assert len(polls) == len(actual)
-    assert len(polls) == tr["check"]["start"]["polls"]
-    for s, event in zip(polls, actual):
-        b = s["bud"]
-        assert token_id(s["c"].split("cell ", 1)[1].split(",", 1)[0]) == event["cid"]
-        assert (b["r"], b["q"], b["k"], b["go"]) == (
+    assert len(record) == len(actual) == tr["check"]["start"]["polls"]
+    for rec, event in zip(record, actual):
+        assert token_id(rec["cell"]) == event["cid"]
+        assert (rec["result"], rec["queue"], len(rec["children"]), rec["split"]) == (
             event["result"], event["queue"], len(event["children"]), event["expand"])
-        assert b["max"] == 20
+        assert [token_id(t) for t in rec["children"]] == [c for c, _ in event["children"]]
         # a cell is split exactly when the three counts fit the budget (or has a single child)
-        assert b["go"] == (b["k"] == 1 or b["r"] + b["q"] + b["k"] <= 20)
+        k = len(rec["children"])
+        assert rec["split"] == (k == 1 or rec["result"] + rec["queue"] + k <= 20)
+    # the first refusal is when the total first goes past 20, and nothing is split afterwards
+    first_no = next(i for i, r in enumerate(record) if not r["split"])
+    assert all(r["split"] for r in record[:first_no]) and not any(r["split"] for r in record[first_no:])
+    # every step with a budget bar shows exactly one recorded poll
+    bars = [s for s in tr["steps"] if "bud" in s]
+    assert bars and [s["bud"]["n"] for s in bars] == sorted(s["bud"]["n"] for s in bars)
+    for s in bars:
+        b = s["bud"]
+        rec = record[b["n"] - 1]
+        assert (b["r"], b["q"], b["k"], b["go"]) == (rec["result"], rec["queue"], len(rec["children"]),
+                                                     rec["split"] or len(rec["children"]) == 1)
+        assert b["max"] == 20
+    assert any(not s["bud"]["go"] for s in bars)
+    # the final covering is 20 cells at most
+    assert len(field_blocks(tr)[0]["cells"]) <= 20
 
 
 def test_a1_samples_and_licence_excerpt():
@@ -166,7 +180,7 @@ def test_a1_samples_and_licence_excerpt():
     # no other trace carries per-sample values
     for name, tr in LOAD.items():
         if name != "a1":
-            assert "samples13" not in tr["check"] and "samples12" not in tr["check"]
+            assert "samples13" not in tr.get("check", {}) and "samples12" not in tr.get("check", {})
 
 
 def test_orientation_maps_match_trace_projections():
