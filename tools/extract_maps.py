@@ -24,7 +24,7 @@ from shapely.ops import transform, linemerge
 
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from anim.common import Proj, Ortho, RE, ROOT  # noqa: E402
+from anim.common import Proj, Ortho, RE, ROOT, ll_unit  # noqa: E402
 
 NE = {
     'urban': ('cultural', 'urban_areas'),
@@ -173,33 +173,95 @@ def extract(tr, features, places, source, date=''):
                 features=out, labels=labels[:5])
 
 
-def globe(cache, tr, scale='110m', tol=20.0):
-    """Orientation map for a globe trace (Ortho projection): sea disc, land, one label."""
-    p = Ortho(*tr['center'])
-    stem = f'ne_{scale}_land'
-    url = f'https://naturalearth.s3.amazonaws.com/{scale}_physical/{stem}.zip'
+def ne_shapes(cache, scale, category, name):
+    stem = f'ne_{scale}_{name}'
+    url = f'https://naturalearth.s3.amazonaws.com/{scale}_{category}/{stem}.zip'
     archive = zipfile.ZipFile(io.BytesIO(download(cache, stem+'.zip', url)))
     reader = shapefile.Reader(shp=io.BytesIO(archive.read(stem+'.shp')),
                               shx=io.BytesIO(archive.read(stem+'.shx')),
                               dbf=io.BytesIO(archive.read(stem+'.dbf')))
+    return [(shape(r.shape.__geo_interface__), r.record.as_dict()) for r in reader.iterShapeRecords()]
+
+
+# Detail grows with the zoom of the globe trace: (half width, half height) of each box in km around the centre,
+# Natural Earth scale, simplification in km. Each finer box is drawn on top of the coarser one.
+GLOBE_LAYERS = [(None, '110m', 25.0), ((2900, 2200), '50m', 8.0), ((135, 100), '10m', 0.3)]
+
+
+def globe(cache, tr):
+    """Orientation map for the globe trace (Ortho projection): sea, land, borders, and near the centre
+    lakes, rivers, towns and roads, finer the closer to the centre."""
+    p = Ortho(*tr['center'])
     disc = Polygon([(RE * math.cos(a), RE * math.sin(a)) for a in np.linspace(0, 2 * math.pi, 181)[:-1]])
     out = [['water', [[round(a), round(b)] for a, b in disc.exterior.coords], True]]
-    def emit(g):
+    nd = lambda tol: 0 if tol >= 1 else 1
+
+    def poly_xy(part):
+        return Polygon([p.ll(lat, lon, 3) for lon, lat in part.exterior.coords])  # behind -> horizon
+
+    def line_runs(g):
+        for part in getattr(g, 'geoms', [g]):
+            run = []
+            pts = list(part.coords) if part.geom_type == 'LineString' else []
+            for q in pts + [None]:
+                if q is not None and p.visible(ll_unit(q[1], q[0])):
+                    run.append(p.ll(q[1], q[0], 3))
+                    continue
+                if len(run) >= 2:
+                    yield LineString(run)
+                run = []
+
+    def emit(kind, g, tol, closed, min_area=0.0, min_len=0.0):
         if g.is_empty: return
-        if g.geom_type == 'Polygon':
-            if g.area > 4e4:
-                out.append(['urban', [[round(a), round(b)] for a, b in g.exterior.coords], True])
+        if g.geom_type in ('Polygon', 'LineString'):
+            if closed and g.area <= min_area: return
+            if not closed and g.length <= min_len: return
+            coords = list(g.exterior.coords) if closed else list(g.coords)
+            k = nd(tol)
+            r = (lambda v: int(round(v))) if k == 0 else (lambda v: round(v, k))
+            out.append([kind, [[r(a), r(b)] for a, b in coords], closed])
+            sizes[scale_now[0] + kind] = sizes.get(scale_now[0] + kind, 0) + len(json.dumps(out[-1]))
         elif hasattr(g, 'geoms'):
-            for child in g.geoms: emit(child)
-    for record in reader.iterShapeRecords():
-        geom = shape(record.shape.__geo_interface__).segmentize(1.0)
-        for part in getattr(geom, 'geoms', [geom]):
-            ring = [p.ll(lat, lon, 3) for lon, lat in part.exterior.coords]  # behind -> horizon
-            g = Polygon(ring).buffer(0).intersection(disc)
-            emit(g.simplify(tol, preserve_topology=True))
-    xx, yy = p.ll(34.0, -42.0)  # Munich is labelled by the trace itself, at every zoom
-    return dict(source=f'Natural Earth 1:{scale[:-1]}m / public domain', date='', center=tr['center'], view=tr['view'],
-                features=out, labels=[['Atlantic Ocean', xx, yy]])
+            for child in g.geoms: emit(kind, child, tol, closed, min_area, min_len)
+
+    inner = None
+    sizes, scale_now = {}, ['110m']
+    for i, (half, scale, tol) in enumerate(GLOBE_LAYERS):
+        scale_now[0] = scale
+        area = disc if half is None else box(-half[0], -half[1], half[0], half[1]).intersection(disc)
+        nxt = GLOBE_LAYERS[i + 1][0] if i + 1 < len(GLOBE_LAYERS) else None
+        inner = None if nxt is None else box(-nxt[0], -nxt[1], nxt[0], nxt[1])
+        if half is not None:  # sea under this box hides the coarser land
+            emit('water', area, tol, True)
+        for g, _ in ne_shapes(cache, scale, 'physical', 'land'):
+            g = g.segmentize(1.0 if tol > 1 else 0.2)
+            for part in getattr(g, 'geoms', [g]):
+                g2 = poly_xy(part).buffer(0).intersection(area)
+                if inner is not None:  # the finer layer redraws this part, unless that would leave a hole
+                    cut = g2.difference(inner)
+                    if not any(len(q.interiors) for q in getattr(cut, 'geoms', [cut]) if q.geom_type == 'Polygon'):
+                        g2 = cut
+                emit('land', g2.simplify(tol, preserve_topology=True), tol, True, min_area=40 * tol * tol)
+        for g, _ in ne_shapes(cache, scale, 'cultural', 'admin_0_boundary_lines_land'):
+            for run in line_runs(g.segmentize(1.0 if tol > 1 else 0.2)):
+                c = run.intersection(area)
+                if inner is not None: c = c.difference(inner)
+                emit('border', c.simplify(tol), tol, False, min_len=3 * tol)
+        if scale == '10m':
+            for kind, (cat, name) in (('water', ('physical', 'lakes')), ('urban', ('cultural', 'urban_areas'))):
+                for g, _ in ne_shapes(cache, scale, cat, name):
+                    for part in getattr(g, 'geoms', [g]):
+                        emit(kind, poly_xy(part).buffer(0).intersection(area).simplify(tol, preserve_topology=True),
+                             tol, True, min_area=8.0)
+            for kind, (cat, name) in (('river', ('physical', 'rivers_lake_centerlines')), ('road', ('cultural', 'roads'))):
+                for g, rec in ne_shapes(cache, scale, cat, name):
+                    if kind == 'road' and rec.get('type') not in ('Major Highway', 'Beltway'): continue
+                    for run in line_runs(g):
+                        emit(kind, run.intersection(area).simplify(tol), tol, False, min_len=2)
+    print('bytes per layer', sizes)
+    xx, yy = p.ll(34.0, -42.0)  # place names near the centre are labels of the trace, one set per zoom
+    return dict(source='Natural Earth 1:110m, 1:50m and 1:10m / public domain', date='', center=tr['center'],
+                view=tr['view'], features=out, labels=[['Atlantic Ocean', xx, yy]])
 
 
 def main():

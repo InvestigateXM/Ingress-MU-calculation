@@ -200,12 +200,12 @@ def test_orientation_maps_match_trace_projections():
         assert ('OpenStreetMap' if trace.get('map', name) <= 'a3' else 'Natural Earth') in data['source']
         x, y, w, h = data['view']
         for kind, coords, closed in data['features']:
-            assert kind in ('road', 'rail', 'water', 'river', 'urban')
+            assert kind in ('road', 'rail', 'water', 'river', 'urban', 'land', 'border')
             assert len(coords) >= (4 if closed else 2)
             for a, b in coords:
                 assert x - .001 <= a <= x + w + .001
                 assert y - .001 <= b <= y + h + .001
-    assert size < 70_000
+    assert size < 130_000
 
 
 def test_comparison_uses_the_actual_covering_cells():
