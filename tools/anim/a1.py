@@ -138,16 +138,24 @@ def build_a1(calc):
             **{f"px:{k[0]}:{k[1]}": "read" for k in reads}, **{f"px:{k[0]}:{k[1]}": "grid" for k in unread}}
     tr.step("Now the counts go back. Each point takes the count of the pixel it read (purple arrows) and returns to its original place in the cell.",
             back, tb=["samples", 16, None])
-    tr.step("Each number now sits at the original place of its point in the cell: the number that point brought back. "
+    # zoomed view on the cell for the steps with 16 numbers (same map, only magnified)
+    cp = poly_of(c13)
+    zx0, zx1 = min(p[0] for p in cp), max(p[0] for p in cp)
+    zy0, zy1 = min(p[1] for p in cp), max(p[1] for p in cp)
+    zw, zh = (zx1 - zx0) * 1.3, (zy1 - zy0) * 1.3
+    zw, zh = max(zw, zh * 4 / 3), max(zh, zw * 3 / 4)
+    zcx, zcy = (zx0 + zx1) / 2, (zy0 + zy1) / 2
+    zoom = [round(zcx - zw / 2, 3), round(zcy - zh / 2, 3), round(zw, 3), round(zh, 3)]
+    tr.step("Zoomed in on the cell: each number now sits at the original place of its point, the number that point brought back. "
             "The shift was only where the game looked: the 16 numbers belong to the 16 points inside the cell.",
-            {"@mb": "", "@ah2": "", "@ct": "", "@d13": "", "@vl": "b"}, tb=["samples", 16, None])
+            {"@mb": "", "@ah2": "", "@ct": "", "@d13": "", "@vl": "b"}, tb=["samples", 16, None], view=zoom)
     groups = {}
     for k in reads:
         groups.setdefault(round(px13[k], 3), [0, px13[k]])[0] += nread[k]
     terms = " + ".join(f"{m}×{fmt(v, 0)}" for m, v in sorted(groups.values(), key=lambda t: -t[1]))
     tr.step(f"The density of the cell is the mean of these 16 numbers, in MU per km². "
             f"So every spot in this cell counts as about {fmt(d13, 0)} MU per km², whatever is actually inside it.",
-            {}, tb=["samples", 16, None], eq=f"({terms}) / 16 = {fmt(d13, 0)} MU per km²")
+            {}, tb=["samples", 16, None], eq=f"({terms}) / 16 = {fmt(d13, 0)} MU per km²", view=zoom)
     tr.extra["summary"] = [
         ["Cell", A1_CELL], ["Cell area", f"{a13:.4f} km²"], ["Measuring points", "16"], ["Pixels read", str(len(px13))],
         ["Density", fmt(d13, 6) + " MU per km²"],
