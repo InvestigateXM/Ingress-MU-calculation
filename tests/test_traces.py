@@ -36,7 +36,7 @@ def field_blocks(tr):
 
 
 def test_expected_files_exist():
-    assert set(LOAD) == {"a0", "a1", "a1g", "a2", "a3", "a4", "a5", "a5g", "a6"}
+    assert set(LOAD) == {"a0", "a1", "a1g", "a2", "a3", "a4", "a5", "a5g", "a6", "a6w", "a6m"}
 
 
 @pytest.mark.parametrize("name", sorted(LOAD))
@@ -185,14 +185,16 @@ def test_a1_samples_and_licence_excerpt():
 
 def test_orientation_maps_match_trace_projections():
     folder = TRACES.parent / 'maps'
-    size = 0
+    size, counted = 0, set()
     for name, trace in LOAD.items():
         if trace.get('schematic'):
             assert not (folder / (name + '.json')).exists()
             continue
         path = folder / (trace.get('map', name) + '.json')
         data = json.loads(path.read_text(encoding='utf-8'))
-        size += path.stat().st_size
+        if path not in counted:
+            size += path.stat().st_size
+            counted.add(path)
         assert data['center'] == trace['center'] and data['view'] == trace['view']
         assert data['features'] and data['labels']
         assert ('OpenStreetMap' if trace.get('map', name) <= 'a3' else 'Natural Earth') in data['source']
@@ -217,3 +219,24 @@ def test_comparison_uses_the_actual_covering_cells():
         assert c['highlight'] == field + ':' + token
         assert (c['level'], c['overlap'], c['density']) == (level, overlap, dens)
         assert c['contribution'] == overlap * dens
+
+
+def test_a6m_shows_which_four_cells_can_be_combined():
+    import s2sphere
+    rows = LOAD["a6m"]["tables"]["cells"]["r"]
+    parent = s2sphere.CellId.from_token(rows[0][0])
+    kids = [s2sphere.CellId.from_token(r[0]) for r in rows[1:5]]
+    bad = [s2sphere.CellId.from_token(r[0]) for r in rows[5:9]]
+    assert parent.level() == 12 and sorted(k.id() for k in kids) == sorted(k.id() for k in parent.children())
+    assert all(b.level() == 13 for b in bad) and len({b.parent(12).id() for b in bad}) == 4
+    # the four share one corner, so they form a square
+    corners = [{tuple(round(x, 9) for x in s2sphere.Cell(b).get_vertex(k)) for k in range(4)} for b in bad]
+    assert len(set.intersection(*corners)) == 1
+
+
+def test_a6w_zooms_in_on_the_cells_that_contain_munich():
+    import s2sphere
+    tr = LOAD["a6w"]
+    leaf = s2sphere.CellId.from_lat_lng(s2sphere.LatLng.from_degrees(*tr["center"]))
+    hl = [k for st in tr["steps"] for k, v in st["s"].items() if v == "hl"]
+    assert [s2sphere.CellId.from_token(k.split(":")[1]).id() for k in hl] == [leaf.parent(lv).id() for lv in (4, 6, 8, 10)]

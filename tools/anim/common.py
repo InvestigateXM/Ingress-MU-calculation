@@ -392,3 +392,38 @@ def share(c):
     return c["ov"] / c["area"]
 
 
+
+
+class Ortho:
+    """Orthographic projection (a globe seen from far away) centred on (lat, lng).
+
+    Returns kilometres, x to the east, y downwards (SVG). Points on the far side of the
+    globe are moved to the horizon; use visible() to test them.
+    """
+
+    def __init__(self, lat, lng):
+        g = Proj(lat, lng)
+        self.c, self.e, self.n, self.lat, self.lng = g.c, g.e, g.n, lat, lng
+
+    def visible(self, p):
+        return float(np.dot(p, self.c)) > 0
+
+    def vec(self, p, nd=1):
+        x, y = float(np.dot(p, self.e)), float(np.dot(p, self.n))
+        if float(np.dot(p, self.c)) < 0:          # behind: push to the horizon
+            r = math.hypot(x, y) or 1.0
+            x, y = x / r, y / r
+        return [round(RE * x, nd), round(-RE * y, nd)]
+
+    def ll(self, lat, lng, nd=1):
+        return self.vec(ll_unit(lat, lng), nd)
+
+
+def edge_points(a, b, n):
+    """n+1 points on the great-circle arc from unit vector a to b (S2 cell edges are geodesics)."""
+    pts = []
+    for i in range(n + 1):
+        t = i / n
+        v = a * (1 - t) + b * t
+        pts.append(v / np.linalg.norm(v))
+    return pts
