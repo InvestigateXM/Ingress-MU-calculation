@@ -6,9 +6,11 @@ The model uses GRUMP v1 year-2000 UN-adjusted counts, historical 2011 S2 coverin
 
 ## Quick start
 
-Use Docker with Linux containers:
+Use Docker with Linux containers. There is no prebuilt image: clone this repository and build it from the included `Dockerfile` and `docker-compose.yml`, running all commands from the repository root:
 
 ```sh
+git clone https://github.com/InvestigateXM/Ingress-MU-calculation.git
+cd Ingress-MU-calculation
 cp .env.example .env
 # Fill in Earthdata username and password in .env.
 docker compose up --build
