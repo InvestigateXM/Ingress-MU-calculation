@@ -2,7 +2,7 @@
 // @id             iitc-plugin-triangle-mu@local
 // @name           IITC plugin: Triangle MU
 // @category       Info
-// @version        0.1.1
+// @version        0.1.2
 // @namespace      https://github.com/InvestigateXM/Ingress-MU-Calculation
 // @description    Reports the Mind Units (MU) of triangles drawn with Draw Tools, using the Ingress-MU-Calculation API.
 // @include        https://intel.ingress.com/*
@@ -194,11 +194,17 @@ function wrapper(plugin_info) {
       self.clearLabels();
 
       var rows = '';
+      var totalMU = 0;
+      var totalArea = 0;
+      var okCount = 0;
       body.results.forEach(function (r, i) {
         var t = batch[i];
         var verts = t.points.map(function (p) { return esc(fmtCoord(p)); }).join('<br>');
         if (r.ok) {
           self.addLabel(t, r.mu.toLocaleString() + ' MU');
+          totalMU += r.mu;
+          totalArea += Number(r.area_km2);
+          okCount++;
           rows += '<tr><td>' + (i + 1) + '</td>' +
             '<td class="mu"><b>' + r.mu.toLocaleString() + '</b></td>' +
             '<td>' + Number(r.area_km2).toLocaleString(undefined, { maximumFractionDigits: 3 }) + '</td>' +
@@ -208,6 +214,16 @@ function wrapper(plugin_info) {
             '<td class="v">' + verts + '</td></tr>';
         }
       });
+
+      if (batch.length > 1 && okCount > 0) {
+        var totalLabel = okCount === batch.length
+          ? 'Total (' + okCount + ' triangles)'
+          : 'Total (' + okCount + ' of ' + batch.length + ' triangles)';
+        rows += '<tr class="total"><td>&Sigma;</td>' +
+          '<td class="mu"><b>' + totalMU.toLocaleString() + '</b></td>' +
+          '<td><b>' + totalArea.toLocaleString(undefined, { maximumFractionDigits: 3 }) + '</b></td>' +
+          '<td>' + totalLabel + '</td></tr>';
+      }
 
       var html = '<table class="plugin-triangle-mu-table">' +
         '<thead><tr><th>#</th><th>MU</th><th>km&sup2;</th><th>Vertices (lat,lng)</th></tr></thead>' +
@@ -234,6 +250,7 @@ function wrapper(plugin_info) {
       '.plugin-triangle-mu-table th,.plugin-triangle-mu-table td{padding:3px 6px;text-align:left;vertical-align:top;' +
       'border-bottom:1px solid #20A8B1;}' +
       '.plugin-triangle-mu-table td.mu{font-size:15px;color:#ffce00;}' +
+      '.plugin-triangle-mu-table tr.total td{border-top:2px solid #ffce00;border-bottom:none;}' +
       '.plugin-triangle-mu-table td.v{font-family:monospace;font-size:11px;}' +
       '.plugin-triangle-mu-table td.err,.plugin-triangle-mu-error{color:#ff6666;}' +
       '#dialog-plugin-triangle-mu .note{opacity:.7;font-size:11px;}'
@@ -265,4 +282,3 @@ if (typeof GM_info !== 'undefined' && GM_info && GM_info.script) {
 }
 script.appendChild(document.createTextNode('(' + wrapper + ')(' + JSON.stringify(info) + ');'));
 (document.body || document.head || document.documentElement).appendChild(script);
-
