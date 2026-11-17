@@ -2,7 +2,7 @@
 // @id             iitc-plugin-triangle-mu@local
 // @name           IITC plugin: Triangle MU
 // @category       Info
-// @version        0.1.2
+// @version        0.1.3
 // @namespace      https://github.com/InvestigateXM/Ingress-MU-Calculation
 // @description    Reports the Mind Units (MU) of triangles drawn with Draw Tools, using the Ingress-MU-Calculation API.
 // @include        https://intel.ingress.com/*
@@ -169,6 +169,79 @@ function wrapper(plugin_info) {
     };
   }
 
+  // ---------- results table (sortable when there are 2+ triangles) ----------
+
+  // key: 'mu' | 'area' | null (original drawing order); dir: 'desc' = big to small
+  self.sort = { key: null, dir: 'desc' };
+  self.view = { rows: [] };
+
+  self.renderTable = function () {
+    var rows = self.view.rows.slice();
+    var multi = rows.length > 1;
+    var key = self.sort.key;
+    var dir = self.sort.dir === 'asc' ? 1 : -1;
+
+    if (multi && key) {
+      rows.sort(function (a, b) {
+        if (a.ok !== b.ok) return a.ok ? -1 : 1; // failed rows always last
+        if (!a.ok) return a.n - b.n;
+        return ((a[key] - b[key]) * dir) || (a.n - b.n);
+      });
+    }
+
+    var totalMU = 0, totalArea = 0, okCount = 0;
+    var body = rows.map(function (r) {
+      if (!r.ok) {
+        return '<tr><td>' + r.n + '</td><td colspan="2" class="err">' + esc(r.error) + '</td>' +
+          '<td class="v">' + r.verts + '</td></tr>';
+      }
+      totalMU += r.mu;
+      totalArea += r.area;
+      okCount++;
+      return '<tr><td>' + r.n + '</td>' +
+        '<td class="mu"><b>' + r.mu.toLocaleString() + '</b></td>' +
+        '<td>' + r.area.toLocaleString(undefined, { maximumFractionDigits: 3 }) + '</td>' +
+        '<td class="v">' + r.verts + '</td></tr>';
+    }).join('');
+
+    if (multi && okCount > 0) {
+      var totalLabel = okCount === rows.length
+        ? 'Total (' + okCount + ' triangles)'
+        : 'Total (' + okCount + ' of ' + rows.length + ' triangles)';
+      body += '<tr class="total"><td>&Sigma;</td>' +
+        '<td class="mu"><b>' + totalMU.toLocaleString() + '</b></td>' +
+        '<td><b>' + totalArea.toLocaleString(undefined, { maximumFractionDigits: 3 }) + '</b></td>' +
+        '<td>' + totalLabel + '</td></tr>';
+    }
+
+    function th(label, k) {
+      if (!multi) return '<th>' + label + '</th>';
+      var ind = self.sort.key === k
+        ? (self.sort.dir === 'asc' ? ' &#9650;' : ' &#9660;')
+        : ' <span class="sortind">&#8645;</span>';
+      return '<th class="sortable" onclick="window.plugin.triangleMU.sortBy(\'' + k + '\');return false;" ' +
+        'title="Click to sort; click again to reverse">' + label + ind + '</th>';
+    }
+
+    var hint = multi
+      ? '<p class="note">Click the MU or km&sup2; header to sort (&#9660; largest first, &#9650; smallest first).</p>'
+      : '';
+
+    return hint + '<table class="plugin-triangle-mu-table">' +
+      '<thead><tr><th>#</th>' + th('MU', 'mu') + th('km&sup2;', 'area') + '<th>Vertices (lat,lng)</th></tr></thead>' +
+      '<tbody>' + body + '</tbody></table>';
+  };
+
+  self.sortBy = function (key) {
+    if (self.sort.key === key) {
+      self.sort.dir = self.sort.dir === 'desc' ? 'asc' : 'desc';
+    } else {
+      self.sort.key = key;
+      self.sort.dir = 'desc'; // first click: biggest first
+    }
+    $('#plugin-triangle-mu-results').html(self.renderTable());
+  };
+
   self.run = function () {
     if (!window.plugin.drawTools || !window.plugin.drawTools.drawnItems) {
       showDialog('<p>The <b>Draw Tools</b> plugin is required. Enable it and draw a triangle (a polygon with exactly 3 vertices).</p>');
@@ -193,41 +266,26 @@ function wrapper(plugin_info) {
     self.requestMU(batch).then(function (body) {
       self.clearLabels();
 
-      var rows = '';
-      var totalMU = 0;
-      var totalArea = 0;
-      var okCount = 0;
+      var rows = [];
       body.results.forEach(function (r, i) {
         var t = batch[i];
-        var verts = t.points.map(function (p) { return esc(fmtCoord(p)); }).join('<br>');
+        var row = {
+          n: i + 1,
+          ok: !!r.ok,
+          verts: t.points.map(function (p) { return esc(fmtCoord(p)); }).join('<br>')
+        };
         if (r.ok) {
           self.addLabel(t, r.mu.toLocaleString() + ' MU');
-          totalMU += r.mu;
-          totalArea += Number(r.area_km2);
-          okCount++;
-          rows += '<tr><td>' + (i + 1) + '</td>' +
-            '<td class="mu"><b>' + r.mu.toLocaleString() + '</b></td>' +
-            '<td>' + Number(r.area_km2).toLocaleString(undefined, { maximumFractionDigits: 3 }) + '</td>' +
-            '<td class="v">' + verts + '</td></tr>';
+          row.mu = r.mu;
+          row.area = Number(r.area_km2);
         } else {
-          rows += '<tr><td>' + (i + 1) + '</td><td colspan="2" class="err">' + esc(r.error || 'Failed') + '</td>' +
-            '<td class="v">' + verts + '</td></tr>';
+          row.error = r.error || 'Failed';
         }
+        rows.push(row);
       });
+      self.view = { rows: rows };
 
-      if (batch.length > 1 && okCount > 0) {
-        var totalLabel = okCount === batch.length
-          ? 'Total (' + okCount + ' triangles)'
-          : 'Total (' + okCount + ' of ' + batch.length + ' triangles)';
-        rows += '<tr class="total"><td>&Sigma;</td>' +
-          '<td class="mu"><b>' + totalMU.toLocaleString() + '</b></td>' +
-          '<td><b>' + totalArea.toLocaleString(undefined, { maximumFractionDigits: 3 }) + '</b></td>' +
-          '<td>' + totalLabel + '</td></tr>';
-      }
-
-      var html = '<table class="plugin-triangle-mu-table">' +
-        '<thead><tr><th>#</th><th>MU</th><th>km&sup2;</th><th>Vertices (lat,lng)</th></tr></thead>' +
-        '<tbody>' + rows + '</tbody></table>';
+      var html = '<div id="plugin-triangle-mu-results">' + self.renderTable() + '</div>';
       if (overflow > 0) html += '<p>Only the first ' + BULK_LIMIT + ' triangles were calculated; ' + overflow + ' more were skipped.</p>';
       if (found.skipped) html += '<p>' + found.skipped + ' drawn polygon(s) ignored (not 3 vertices).</p>';
       html += '<p class="note">API: ' + esc(self.getApi()) + '<br>Model: ' + esc(body.model || 'unknown') + '</p>';
@@ -250,6 +308,9 @@ function wrapper(plugin_info) {
       '.plugin-triangle-mu-table th,.plugin-triangle-mu-table td{padding:3px 6px;text-align:left;vertical-align:top;' +
       'border-bottom:1px solid #20A8B1;}' +
       '.plugin-triangle-mu-table td.mu{font-size:15px;color:#ffce00;}' +
+      '.plugin-triangle-mu-table th.sortable{cursor:pointer;user-select:none;white-space:nowrap;}' +
+      '.plugin-triangle-mu-table th.sortable:hover{color:#ffce00;}' +
+      '.plugin-triangle-mu-table .sortind{opacity:.4;}' +
       '.plugin-triangle-mu-table tr.total td{border-top:2px solid #ffce00;border-bottom:none;}' +
       '.plugin-triangle-mu-table td.v{font-family:monospace;font-size:11px;}' +
       '.plugin-triangle-mu-table td.err,.plugin-triangle-mu-error{color:#ff6666;}' +
