@@ -2,7 +2,7 @@
 // @id             iitc-plugin-triangle-mu@local
 // @name           IITC plugin: Triangle MU
 // @category       Info
-// @version        0.1.3
+// @version        0.1.4
 // @namespace      https://github.com/InvestigateXM/Ingress-MU-Calculation
 // @description    Reports the Mind Units (MU) of triangles drawn with Draw Tools, using the Ingress-MU-Calculation API.
 // @include        https://intel.ingress.com/*
@@ -153,7 +153,7 @@ function wrapper(plugin_info) {
 
   function dialogButtons() {
     return {
-      'Recalculate': function () { self.run(); },
+      'Recalculate': function () { self.run(true); },
       'Set API URL': function () {
         var v = window.prompt(
           'MU API base URL (e.g. http://localhost:8000 for a self-hosted container):',
@@ -164,15 +164,15 @@ function wrapper(plugin_info) {
           window.alert('Please enter a valid http(s) URL.');
           return;
         }
-        self.run();
+        self.run(true);
       }
     };
   }
 
   // ---------- results table (sortable when there are 2+ triangles) ----------
 
-  // key: 'mu' | 'area' | null (original drawing order); dir: 'desc' = big to small
-  self.sort = { key: null, dir: 'desc' };
+  // key: 'n' (drawing order) | 'mu' | 'area'; dir: 'desc' = big to small
+  self.sort = { key: 'n', dir: 'asc' };
   self.view = { rows: [] };
 
   self.renderTable = function () {
@@ -183,8 +183,10 @@ function wrapper(plugin_info) {
 
     if (multi && key) {
       rows.sort(function (a, b) {
-        if (a.ok !== b.ok) return a.ok ? -1 : 1; // failed rows always last
-        if (!a.ok) return a.n - b.n;
+        if (key !== 'n') {
+          if (a.ok !== b.ok) return a.ok ? -1 : 1; // failed rows always last
+          if (!a.ok) return a.n - b.n;
+        }
         return ((a[key] - b[key]) * dir) || (a.n - b.n);
       });
     }
@@ -223,12 +225,8 @@ function wrapper(plugin_info) {
         'title="Click to sort; click again to reverse">' + label + ind + '</th>';
     }
 
-    var hint = multi
-      ? '<p class="note">Click the MU or km&sup2; header to sort (&#9660; largest first, &#9650; smallest first).</p>'
-      : '';
-
-    return hint + '<table class="plugin-triangle-mu-table">' +
-      '<thead><tr><th>#</th>' + th('MU', 'mu') + th('km&sup2;', 'area') + '<th>Vertices (lat,lng)</th></tr></thead>' +
+    return '<table class="plugin-triangle-mu-table">' +
+      '<thead><tr>' + th('#', 'n') + th('MU', 'mu') + th('km&sup2;', 'area') + '<th>Vertices (lat,lng)</th></tr></thead>' +
       '<tbody>' + body + '</tbody></table>';
   };
 
@@ -242,7 +240,35 @@ function wrapper(plugin_info) {
     $('#plugin-triangle-mu-results').html(self.renderTable());
   };
 
-  self.run = function () {
+  // In-memory cache of the last successful calculation. Valid while the API URL
+  // and the triangles (coordinates and order) are unchanged.
+  self.cache = null; // { sig, rows, model }
+  self.requestId = 0;
+
+  function signature(batch) {
+    return self.getApi() + '|' + batch.map(function (t) {
+      return t.points.map(fmtCoord).join(';');
+    }).join('/');
+  }
+
+  // Draws labels and the dialog from self.view / self.cache.
+  self.showResults = function (batch, found, overflow, fromCache) {
+    self.clearLabels();
+    self.view.rows.forEach(function (r) {
+      if (r.ok && batch[r.n - 1]) self.addLabel(batch[r.n - 1], r.mu.toLocaleString() + ' MU');
+    });
+
+    var html = '<div id="plugin-triangle-mu-results">' + self.renderTable() + '</div>';
+    if (overflow > 0) html += '<p>Only the first ' + BULK_LIMIT + ' triangles were calculated; ' + overflow + ' more were skipped.</p>';
+    if (found.skipped) html += '<p>' + found.skipped + ' drawn polygon(s) ignored (not 3 vertices).</p>';
+    html += '<p class="note">API: ' + esc(self.getApi()) + (fromCache ? ' (cached)' : '') +
+      '<br>Model: ' + esc(self.cache.model || 'unknown') + '</p>';
+
+    showDialog(html, dialogButtons());
+  };
+
+  // force = true skips the cache and always asks the API.
+  self.run = function (force) {
     if (!window.plugin.drawTools || !window.plugin.drawTools.drawnItems) {
       showDialog('<p>The <b>Draw Tools</b> plugin is required. Enable it and draw a triangle (a polygon with exactly 3 vertices).</p>');
       return;
@@ -260,38 +286,41 @@ function wrapper(plugin_info) {
 
     var batch = triangles.slice(0, BULK_LIMIT);
     var overflow = triangles.length - batch.length;
+    var sig = signature(batch);
 
+    if (force !== true && self.cache && self.cache.sig === sig) {
+      self.requestId++; // invalidate any request still in flight
+      self.view = { rows: self.cache.rows };
+      self.showResults(batch, found, overflow, true);
+      return;
+    }
+
+    var token = ++self.requestId;
     showDialog('<p>Calculating MU for ' + batch.length + ' triangle(s)&hellip;</p>');
 
     self.requestMU(batch).then(function (body) {
-      self.clearLabels();
+      if (token !== self.requestId) return; // a newer request superseded this one
 
-      var rows = [];
-      body.results.forEach(function (r, i) {
-        var t = batch[i];
+      var rows = body.results.map(function (r, i) {
         var row = {
           n: i + 1,
           ok: !!r.ok,
-          verts: t.points.map(function (p) { return esc(fmtCoord(p)); }).join('<br>')
+          verts: batch[i].points.map(function (p) { return esc(fmtCoord(p)); }).join('<br>')
         };
         if (r.ok) {
-          self.addLabel(t, r.mu.toLocaleString() + ' MU');
           row.mu = r.mu;
           row.area = Number(r.area_km2);
         } else {
           row.error = r.error || 'Failed';
         }
-        rows.push(row);
+        return row;
       });
+
+      self.cache = { sig: sig, rows: rows, model: body.model };
       self.view = { rows: rows };
-
-      var html = '<div id="plugin-triangle-mu-results">' + self.renderTable() + '</div>';
-      if (overflow > 0) html += '<p>Only the first ' + BULK_LIMIT + ' triangles were calculated; ' + overflow + ' more were skipped.</p>';
-      if (found.skipped) html += '<p>' + found.skipped + ' drawn polygon(s) ignored (not 3 vertices).</p>';
-      html += '<p class="note">API: ' + esc(self.getApi()) + '<br>Model: ' + esc(body.model || 'unknown') + '</p>';
-
-      showDialog(html, dialogButtons());
+      self.showResults(batch, found, overflow, false);
     }).catch(function (err) {
+      if (token !== self.requestId) return;
       showDialog('<p class="plugin-triangle-mu-error">Could not get MU: ' + esc(err && err.message ? err.message : err) +
         '</p><p class="note">API: ' + esc(self.getApi()) + '</p>', dialogButtons());
     });
