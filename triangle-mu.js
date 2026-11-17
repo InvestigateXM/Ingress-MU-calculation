@@ -1,10 +1,10 @@
 // ==UserScript==
 // @id             iitc-plugin-triangle-mu@local
-// @name           IITC plugin: Triangle MU
+// @name           IITC plugin: Field MU
 // @category       Info
-// @version        0.1.4
+// @version        0.1.5
 // @namespace      https://github.com/InvestigateXM/Ingress-MU-Calculation
-// @description    Reports the Mind Units (MU) of triangles drawn with Draw Tools, using the Ingress-MU-Calculation API.
+// @description    Reports the Mind Units (MU) of fields drawn with Draw Tools, using the Ingress-MU-Calculation API.
 // @include        https://intel.ingress.com/*
 // @include        https://intel-x.ingress.com/*
 // @match          https://intel.ingress.com/*
@@ -68,7 +68,7 @@ function wrapper(plugin_info) {
     return ll.lat.toFixed(6) + ',' + ll.lng.toFixed(6);
   }
 
-  // ---------- collecting triangles ----------
+  // ---------- collecting fields (3-vertex polygons) ----------
 
   self.collectTriangles = function () {
     var dt = window.plugin.drawTools;
@@ -143,7 +143,7 @@ function wrapper(plugin_info) {
   function showDialog(html, buttons) {
     window.dialog({
       id: 'plugin-triangle-mu',
-      title: 'Triangle MU',
+      title: 'Field MU',
       html: html,
       width: 520,
       buttons: buttons || {},
@@ -169,11 +169,12 @@ function wrapper(plugin_info) {
     };
   }
 
-  // ---------- results table (sortable when there are 2+ triangles) ----------
+  // ---------- results table (sortable when there are 2+ fields) ----------
 
   // key: 'n' (drawing order) | 'mu' | 'area'; dir: 'desc' = big to small
   self.sort = { key: 'n', dir: 'asc' };
   self.view = { rows: [] };
+  self.expanded = {}; // row number -> true when its vertices are shown
 
   self.renderTable = function () {
     var rows = self.view.rows.slice();
@@ -191,11 +192,21 @@ function wrapper(plugin_info) {
       });
     }
 
+    function vertsCell(r) {
+      if (self.expanded[r.n]) {
+        return '<td class="v"><span class="vexp" onclick="window.plugin.triangleMU.toggleVerts(' + r.n + ');return false;" ' +
+          'title="Click to collapse">' + r.verts + '</span></td>';
+      }
+      return '<td class="v"><a class="vtoggle" onclick="window.plugin.triangleMU.toggleVerts(' + r.n + ');return false;">expand</a></td>';
+    }
+
+    var allExpanded = rows.length > 0 && rows.every(function (r) { return self.expanded[r.n]; });
+
     var totalMU = 0, totalArea = 0, okCount = 0;
     var body = rows.map(function (r) {
       if (!r.ok) {
         return '<tr><td>' + r.n + '</td><td colspan="2" class="err">' + esc(r.error) + '</td>' +
-          '<td class="v">' + r.verts + '</td></tr>';
+          vertsCell(r) + '</tr>';
       }
       totalMU += r.mu;
       totalArea += r.area;
@@ -203,13 +214,13 @@ function wrapper(plugin_info) {
       return '<tr><td>' + r.n + '</td>' +
         '<td class="mu"><b>' + r.mu.toLocaleString() + '</b></td>' +
         '<td>' + r.area.toLocaleString(undefined, { maximumFractionDigits: 3 }) + '</td>' +
-        '<td class="v">' + r.verts + '</td></tr>';
+        vertsCell(r) + '</tr>';
     }).join('');
 
     if (multi && okCount > 0) {
       var totalLabel = okCount === rows.length
-        ? 'Total (' + okCount + ' triangles)'
-        : 'Total (' + okCount + ' of ' + rows.length + ' triangles)';
+        ? 'Total (' + okCount + ' fields)'
+        : 'Total (' + okCount + ' of ' + rows.length + ' fields)';
       body += '<tr class="total"><td>&Sigma;</td>' +
         '<td class="mu"><b>' + totalMU.toLocaleString() + '</b></td>' +
         '<td><b>' + totalArea.toLocaleString(undefined, { maximumFractionDigits: 3 }) + '</b></td>' +
@@ -226,7 +237,10 @@ function wrapper(plugin_info) {
     }
 
     return '<table class="plugin-triangle-mu-table">' +
-      '<thead><tr>' + th('#', 'n') + th('MU', 'mu') + th('km&sup2;', 'area') + '<th>Vertices (lat,lng)</th></tr></thead>' +
+      '<thead><tr>' + th('#', 'n') + th('MU', 'mu') + th('km&sup2;', 'area') +
+      '<th class="clickable" onclick="window.plugin.triangleMU.toggleAllVerts();return false;" ' +
+      'title="Click to expand or collapse all vertices">Vertices (lat,lng) ' + (allExpanded ? '[&minus;]' : '[+]') + '</th>' +
+      '</tr></thead>' +
       '<tbody>' + body + '</tbody></table>';
   };
 
@@ -240,8 +254,19 @@ function wrapper(plugin_info) {
     $('#plugin-triangle-mu-results').html(self.renderTable());
   };
 
+  self.toggleVerts = function (n) {
+    self.expanded[n] = !self.expanded[n];
+    $('#plugin-triangle-mu-results').html(self.renderTable());
+  };
+
+  self.toggleAllVerts = function () {
+    var all = self.view.rows.length > 0 && self.view.rows.every(function (r) { return self.expanded[r.n]; });
+    self.view.rows.forEach(function (r) { self.expanded[r.n] = !all; });
+    $('#plugin-triangle-mu-results').html(self.renderTable());
+  };
+
   // In-memory cache of the last successful calculation. Valid while the API URL
-  // and the triangles (coordinates and order) are unchanged.
+  // and the fields (coordinates and order) are unchanged.
   self.cache = null; // { sig, rows, model }
   self.requestId = 0;
 
@@ -253,13 +278,14 @@ function wrapper(plugin_info) {
 
   // Draws labels and the dialog from self.view / self.cache.
   self.showResults = function (batch, found, overflow, fromCache) {
+    self.expanded = {}; // vertices start collapsed
     self.clearLabels();
     self.view.rows.forEach(function (r) {
       if (r.ok && batch[r.n - 1]) self.addLabel(batch[r.n - 1], r.mu.toLocaleString() + ' MU');
     });
 
     var html = '<div id="plugin-triangle-mu-results">' + self.renderTable() + '</div>';
-    if (overflow > 0) html += '<p>Only the first ' + BULK_LIMIT + ' triangles were calculated; ' + overflow + ' more were skipped.</p>';
+    if (overflow > 0) html += '<p>Only the first ' + BULK_LIMIT + ' fields were calculated; ' + overflow + ' more were skipped.</p>';
     if (found.skipped) html += '<p>' + found.skipped + ' drawn polygon(s) ignored (not 3 vertices).</p>';
     html += '<p class="note">API: ' + esc(self.getApi()) + (fromCache ? ' (cached)' : '') +
       '<br>Model: ' + esc(self.cache.model || 'unknown') + '</p>';
@@ -270,7 +296,7 @@ function wrapper(plugin_info) {
   // force = true skips the cache and always asks the API.
   self.run = function (force) {
     if (!window.plugin.drawTools || !window.plugin.drawTools.drawnItems) {
-      showDialog('<p>The <b>Draw Tools</b> plugin is required. Enable it and draw a triangle (a polygon with exactly 3 vertices).</p>');
+      showDialog('<p>The <b>Draw Tools</b> plugin is required. Enable it and draw a field (a polygon with exactly 3 vertices).</p>');
       return;
     }
 
@@ -278,7 +304,7 @@ function wrapper(plugin_info) {
     var triangles = found.triangles;
 
     if (!triangles.length) {
-      var msg = '<p>No triangle found. Draw a polygon with exactly <b>3 vertices</b> using Draw Tools.</p>';
+      var msg = '<p>No field found. Draw a polygon with exactly <b>3 vertices</b> using Draw Tools.</p>';
       if (found.skipped) msg += '<p>' + found.skipped + ' drawn polygon(s) ignored because they do not have 3 vertices.</p>';
       showDialog(msg, dialogButtons());
       return;
@@ -296,7 +322,7 @@ function wrapper(plugin_info) {
     }
 
     var token = ++self.requestId;
-    showDialog('<p>Calculating MU for ' + batch.length + ' triangle(s)&hellip;</p>');
+    showDialog('<p>Calculating MU for ' + batch.length + ' field(s)&hellip;</p>');
 
     self.requestMU(batch).then(function (body) {
       if (token !== self.requestId) return; // a newer request superseded this one
@@ -337,8 +363,10 @@ function wrapper(plugin_info) {
       '.plugin-triangle-mu-table th,.plugin-triangle-mu-table td{padding:3px 6px;text-align:left;vertical-align:top;' +
       'border-bottom:1px solid #20A8B1;}' +
       '.plugin-triangle-mu-table td.mu{font-size:15px;color:#ffce00;}' +
-      '.plugin-triangle-mu-table th.sortable{cursor:pointer;user-select:none;white-space:nowrap;}' +
-      '.plugin-triangle-mu-table th.sortable:hover{color:#ffce00;}' +
+      '.plugin-triangle-mu-table th.sortable,.plugin-triangle-mu-table th.clickable{cursor:pointer;user-select:none;white-space:nowrap;}' +
+      '.plugin-triangle-mu-table th.sortable:hover,.plugin-triangle-mu-table th.clickable:hover{color:#ffce00;}' +
+      '.plugin-triangle-mu-table a.vtoggle,.plugin-triangle-mu-table .vexp{cursor:pointer;}' +
+      '.plugin-triangle-mu-table .vexp{display:inline-block;}' +
       '.plugin-triangle-mu-table .sortind{opacity:.4;}' +
       '.plugin-triangle-mu-table tr.total td{border-top:2px solid #ffce00;border-bottom:none;}' +
       '.plugin-triangle-mu-table td.v{font-family:monospace;font-size:11px;}' +
@@ -347,11 +375,11 @@ function wrapper(plugin_info) {
     ).appendTo('head');
 
     self.labelLayer = new L.LayerGroup();
-    window.addLayerGroup('Triangle MU labels', self.labelLayer, true);
+    window.addLayerGroup('Field MU labels', self.labelLayer, true);
 
     $('#toolbox').append(
       '<a id="plugin-triangle-mu-link" onclick="window.plugin.triangleMU.run();return false;" ' +
-      'title="Calculate Mind Units for triangles drawn with Draw Tools">Triangle MU</a>'
+      'title="Calculate Mind Units for fields drawn with Draw Tools">Field MU</a>'
     );
   };
 
